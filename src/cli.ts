@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createShoppingApplication } from './runtime.js';
+import { runAutoLogin } from './auto-login.js';
+import { isMainModule } from './main-module.js';
+import type { ContinenteMcpServer } from './mcp/server.js';
+
+const USAGE = `Usage: continentept-mcp [command]
+
+Commands:
+  (none)            Start the MCP server on stdio
+  login             Sign in with CONTINENTE_EMAIL and CONTINENTE_PASSWORD and save the session
+                    (--show-browser displays the browser window)
+  install-browser   Download the Chromium build used by the server (extra arguments go to Playwright)
+
+Options:
+  -h, --help        Show this help
+  -v, --version     Show the version
+`;
+
+function packageVersion(): string {
+  const metadata: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  if (typeof metadata !== 'object' || metadata === null || !('version' in metadata) ||
+    typeof metadata.version !== 'string') throw new Error('Missing package version');
+  return metadata.version;
+}
+
+export async function startStdioServer(): Promise<ContinenteMcpServer> {
+  const version = packageVersion();
+  const application = createShoppingApplication({ version });
+  await connectStdioApplication(application);
+  console.error(`continentept-mcp ${version} ready on stdio`);
+  return application;
+}
+
+/** The SDK stdio transport does not treat input EOF as closure, so the CLI owns that lifecycle. */
+export async function connectStdioApplication(application: ContinenteMcpServer): Promise<void> {
+  const detach = () => {
+    process.off('SIGINT', shutdown); process.off('SIGTERM', shutdown);
+    process.stdin.off('end', shutdown); process.stdin.off('close', shutdown);
+  };
+  const shutdown = () => {
+    detach();
+    void application.close().catch(() => { console.error('Could not close Continente MCP resources.'); process.exitCode = 1; });
+  };
+  process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
+  process.stdin.once('end', shutdown); process.stdin.once('close', shutdown);
+  try { await application.connect(new StdioServerTransport()); } catch (error) { detach(); throw error; }
+}
+
+function installBrowser(extra: string[]): number {
+  const playwright = dirname(createRequire(import.meta.url).resolve('playwright/package.json'));
+  const result = spawnSync(process.execPath, [join(playwright, 'cli.js'), 'install', 'chromium', ...extra], { stdio: 'inherit' });
+  return result.status ?? 1;
+}
+
+export async function main(args: string[]): Promise<number> {
+  const [command, ...rest] = args;
+  switch (command) {
+    case undefined:
+    case 'serve':
+      await startStdioServer();
+      return 0;
+    case 'login':
+      try { return (await runAutoLogin({ showBrowser: rest.includes('--show-browser') })) ? 0 : 1; }
+      catch (error) { console.error(`Login failed: ${error instanceof Error ? error.message : 'unknown error'}`); return 1; }
+    case 'install-browser':
+      return installBrowser(rest);
+    case '-v':
+    case '--version':
+      console.log(packageVersion());
+      return 0;
+    case '-h':
+    case '--help':
+      console.log(USAGE);
+      return 0;
+    default:
+      console.error(`Unknown command: ${command}\n\n${USAGE}`);
+      return 2;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
+  main(process.argv.slice(2)).then(code => { if (code) process.exitCode = code; }, (error: unknown) => {
+    console.error(error instanceof Error ? error.message : 'Could not start Continente MCP');
+    process.exitCode = 1;
+  });
+}

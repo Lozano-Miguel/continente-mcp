@@ -1,0 +1,269 @@
+import type { z } from 'zod';
+import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { ToolHandler } from './server.js';
+import type { SessionService, MutationResult } from '../ports.js';
+import type { CartMutationResult, Money, ObservedQuantity, Order, ProductDetails, ProductSaleRules, Quantity, QuotedMoney, Result, ToolError } from '../domain/index.js';
+import { failure } from '../domain/index.js';
+import * as contracts from './contracts.js';
+import { withAuthenticationRecovery } from '../services/recovery.js';
+import type { CatalogService, FavoritesService, FavoritesSnapshot, SearchResult } from '../services/catalog.js';
+import type { CartService } from '../services/cart.js';
+import type { OrderService, PurchaseHistoryService, OrderListOptions } from '../services/orders.js';
+
+export interface ShoppingServices {
+  catalog: CatalogService; favorites: FavoritesService; cart: CartService; orders: OrderService;
+  history: PurchaseHistoryService; session: SessionService;
+}
+
+type Status = 'success' | 'empty' | 'partial';
+type MutationSummary = z.infer<typeof contracts.ErrorResultSchema>['mutation'];
+
+const NOT_LOGGED_IN = 'Sign-in required. Configure CONTINENTE_EMAIL and CONTINENTE_PASSWORD (see the configuration guide) or run `continentept-mcp login`.';
+const CHECKOUT_URL = 'https://www.continente.pt/checkout/carrinho/';
+
+// Text content mirrors the structured result for clients that only show text to the model,
+// so it always includes the identifiers needed for follow-up calls.
+const euros = (money: Money | null) => money === null ? 'price unavailable' : `€${(money.minorUnits / 100).toFixed(2)}`;
+const amount = (quantity: Quantity) => `${Number(quantity.value.toPrecision(12))} ${quantity.unit}`;
+const observed = (quantity: ObservedQuantity) => quantity.status === 'known' ? amount(quantity.quantity)
+  : quantity.value === null ? 'quantity unknown' : `${quantity.value} (unit unknown)`;
+const quoted = (price: QuotedMoney) => price.amount === null ? 'price unavailable'
+  : `${euros(price.amount)}${price.basis === 'unit' ? ' each' : price.basis === 'line' ? ' line total' : ''}`;
+const numbered = (lines: string[]) => lines.map((line, index) => `${index + 1}. ${line}`).join('\n');
+
+function response(data: unknown, text: string, status: Status = 'success'): CallToolResult {
+  return { structuredContent: { result: { status, data } }, content: [{ type: 'text', text }] };
+}
+function errorResult(error: ToolError, mutation?: MutationSummary): CallToolResult {
+  const unknown = mutation?.outcome === 'unknown';
+  const publicError = { ...error, message: error.code === 'not_authenticated' && !unknown ? NOT_LOGGED_IN : error.message,
+    ...(unknown ? { retryable: false } : {}) };
+  const note = unknown ? '\nThe cart may have changed. Call get_cart before making another change; do not repeat this request automatically.'
+    : mutation ? '\nThe cart was not changed.' : '';
+  return { isError: true, content: [{ type: 'text', text: `Error (${publicError.code}): ${publicError.message}${note}` }],
+    structuredContent: { result: { status: 'error', error: publicError, ...(mutation ? { mutation } : {}) } } };
+}
+
+export function formatProductSearchResults(products: SearchResult['page']['items']): string {
+  return numbered(products.map(product => `${product.name}${product.favorite ? ' ⭐ favorite' : ''} — ${euros(product.price)}` +
+    `${product.unitPriceText ? ` (${product.unitPriceText})` : ''}${product.minimumText ? `, minimum ${product.minimumText}` : ''}` +
+    `\n   productId: ${product.productId}`));
+}
+function formatSaleRules(rules: ProductSaleRules): string {
+  const bounds = [rules.minimum && `minimum ${amount(rules.minimum)}`, rules.maximum && `maximum ${amount(rules.maximum)}`,
+    rules.step && `step ${amount(rules.step)}`].filter(Boolean).join(', ');
+  return `sold in ${rules.saleUnit}${bounds ? ` (${bounds})` : ''}`;
+}
+function formatProduct(product: ProductDetails): string {
+  return [`${product.name}`, `productId: ${product.productId}`,
+    `Price: ${quoted(product.price)}${product.unitPriceText ? ` (${product.unitPriceText})` : ''}`,
+    `Availability: ${product.availability}`,
+    product.saleRules.status === 'available' ? `Sale rules: ${formatSaleRules(product.saleRules.rules)}`
+      : `Sale rules unavailable: ${product.saleRules.error.message}`, `URL: ${product.url}`].join('\n');
+}
+function formatOrderLines(order: Order): string {
+  if (order.lines.status === 'not_requested') return '   (lines not requested)';
+  if (order.lines.status === 'unavailable') return `   (lines could not be read: ${order.lines.error.message})`;
+  if (!order.lines.items.length) return '   (no product lines)';
+  return order.lines.items.map(line => `   - ${observed(line.quantity)} × ${line.name}${line.productId ? ` [${line.productId}]` : ''}`).join('\n');
+}
+function orderHeading(order: Order): string {
+  return [order.date ?? order.rawDate ?? 'date unknown', order.orderNumber && `order ${order.orderNumber}`,
+    order.orderId && `orderId: ${order.orderId}`].filter(Boolean).join(' · ');
+}
+function favoritesData(snapshot: FavoritesSnapshot) {
+  const { favorites, fetchedAt, source, freshness, expiresAt, cacheState } = snapshot;
+  return { favorites, fetchedAt, source, freshness, expiresAt, cacheState, completeness: snapshot.completeness ?? 'unknown' };
+}
+function mutationText(value: Extract<CartMutationResult, { outcome: 'confirmed' }>, operation: 'add' | 'set' | 'remove'): string {
+  const line = value.cartItemId ? ` (cartItemId ${value.cartItemId})` : '';
+  if (value.disposition === 'already_absent') return `Product ${value.productId} was not in the cart; nothing changed.`;
+  if (value.disposition === 'removed') return `Removed product ${value.productId}${line} from the cart.`;
+  const action = operation === 'add' ? `Added ${amount(value.requested)} of` : `Set the quantity to ${amount(value.requested)} for`;
+  return `${action} product ${value.productId}${line}. The cart now holds ${amount(value.confirmedQuantity)}.`;
+}
+
+export class ShoppingHandlers {
+  constructor(private readonly services: ShoppingServices) {}
+  private recover<T>(operation: () => Promise<Result<T, ToolError>>) {
+    return withAuthenticationRecovery(operation, () => this.services.session.refreshAuthentication());
+  }
+
+  async searchProducts(query: string, limit: number): Promise<CallToolResult> {
+    const result = await this.services.catalog.searchProducts(query, limit);
+    if (!result.ok) return errorResult(result.error);
+    const { page, scanned, favorites } = result.value;
+    const partial = page.completeness === 'partial';
+    const text = page.items.length
+      ? `${page.items.length} of ${scanned} scanned products for "${query}":\n\n${formatProductSearchResults(page.items)}`
+      : `No products found for "${query}".`;
+    return response({ products: page.items, scanned, returned: page.items.length, favoritesLoaded: favorites.length, completeness: page.completeness,
+      failures: page.failures, nextCursor: page.nextCursor },
+    text + (partial ? '\n\nPartial results: some result pages could not be read.' : ''), partial ? 'partial' : page.items.length ? 'success' : 'empty');
+  }
+
+  async getProduct(reference: string): Promise<CallToolResult> {
+    const result = await this.services.catalog.getProduct(reference);
+    if (!result.ok) return errorResult(result.error);
+    const product = result.value;
+    const partial = product.saleRules.status === 'unavailable' || product.price.amount === null || product.availability === 'unknown';
+    return response(product, formatProduct(product), partial ? 'partial' : 'success');
+  }
+
+  async listFavorites(refresh: boolean): Promise<CallToolResult> {
+    const result = await this.recover(() => refresh ? this.services.favorites.refreshFavorites() : this.services.favorites.listFavorites());
+    if (!result.ok) return errorResult(result.error);
+    const { favorites, source, freshness } = result.value;
+    const header = `${favorites.length} favorites (${source === 'website' ? 'fetched from the website' : `cached ${result.value.fetchedAt}`}):`;
+    const list = numbered(favorites.map(item => `${item.name} — ${euros(item.price)}\n   productId: ${item.productId}`));
+    return response(favoritesData(result.value), (favorites.length ? `${header}\n\n${list}` : 'No favorites saved.') +
+      (freshness === 'stale' ? '\n\nThis snapshot is more than 24 hours old. Call list_favorites with refresh: true to update it.' : ''),
+    favorites.length ? 'success' : 'empty');
+  }
+
+  async getCart(): Promise<CallToolResult> {
+    const result = await this.recover(() => this.services.cart.getCart());
+    if (!result.ok) return errorResult(result.error);
+    const cart = result.value;
+    if (!cart.items.length) return response(cart, 'The cart is empty.', 'empty');
+    const list = numbered(cart.items.map(item => `${item.name} — ${observed(item.quantity)} × ${quoted(item.price)}` +
+      `\n   productId: ${item.productId}${item.cartItemId ? `, cartItemId: ${item.cartItemId}` : ''}`));
+    return response(cart, `Cart (${cart.items.length} lines):\n\n${list}\n\nTotal: ${cart.total === null ? 'unavailable' : euros(cart.total)}` +
+      `\nCheckout happens on the website: ${CHECKOUT_URL}`);
+  }
+
+  private mutation(result: MutationResult, operation: 'add' | 'set' | 'remove'): CallToolResult {
+    if (!result.ok) return errorResult(result.error, { outcome: 'not_applied' });
+    const value = result.value;
+    if (value.outcome === 'confirmed') return response(value, mutationText(value, operation));
+    return errorResult(value.error, value.outcome === 'unknown' ? { outcome: 'unknown', recovery: value.recovery } : { outcome: 'not_applied' });
+  }
+  async addCartItem(reference: string, quantity: number, cartItemId?: string): Promise<CallToolResult> {
+    return this.mutation(await this.recover(() => this.services.cart.addCartItem(reference, quantity, cartItemId)), 'add');
+  }
+  async setCartItemQuantity(reference: string, quantity: number, cartItemId?: string): Promise<CallToolResult> {
+    return this.mutation(await this.recover(() => this.services.cart.setCartItemQuantity(reference, quantity, cartItemId)), quantity === 0 ? 'remove' : 'set');
+  }
+  async removeCartItem(reference: string, cartItemId?: string): Promise<CallToolResult> {
+    return this.mutation(await this.recover(() => this.services.cart.removeCartItem(reference, cartItemId)), 'remove');
+  }
+
+  async listOrders(limit: number, options: OrderListOptions): Promise<CallToolResult> {
+    const result = await this.recover(() => this.services.orders.listOrders(limit, options));
+    if (!result.ok) return errorResult(result.error);
+    const page = result.value;
+    const partial = page.completeness === 'partial';
+    const list = numbered(page.items.map(order => `${orderHeading(order)}\n${formatOrderLines(order)}`));
+    return response({ orders: page.items, completeness: page.completeness, failures: page.failures, nextCursor: page.nextCursor,
+      hasMore: page.hasMore, detailBudget: page.detailBudget, detailsRead: page.detailsRead, scanFailures: page.scanFailures },
+    (list ? `Orders:\n\n${list}` : 'No orders found.') +
+      (partial ? '\n\nPartial results: some order pages or details could not be read.' : '') +
+      (page.nextCursor ? `\n\nMore orders are available. Pass cursor "${page.nextCursor}" to continue.` : ''),
+    partial ? 'partial' : page.items.length ? 'success' : 'empty');
+  }
+
+  async getOrder(orderId: string): Promise<CallToolResult> {
+    const result = await this.recover(() => this.services.orders.getOrder(orderId));
+    if (!result.ok) return errorResult(result.error);
+    const order = result.value;
+    const lines = order.lines.status === 'available' ? order.lines.items : [];
+    const unknownQuantityLines = lines.filter(line => line.quantity.status === 'unknown').length;
+    return response({ order, unknownQuantityLines }, `${orderHeading(order)} — ${lines.length} product lines:\n${formatOrderLines(order)}` +
+      (unknownQuantityLines ? `\n\n${unknownQuantityLines} quantities could not be read.` : ''),
+    unknownQuantityLines ? 'partial' : lines.length ? 'success' : 'empty');
+  }
+
+  async listFrequentlyBoughtProducts(orderLimit: number, limit: number): Promise<CallToolResult> {
+    const result = await this.recover(() => this.services.history.listFrequentlyBoughtProducts(orderLimit));
+    if (!result.ok) return errorResult(result.error);
+    const scan = result.value;
+    if (!scan.succeeded && (scan.failed || scan.unscanned)) {
+      const unavailable = errorResult(failure('order_details_unavailable', 'No order details could be read. See scan.failures.').error);
+      return { ...unavailable, structuredContent: { ...unavailable.structuredContent, scan } };
+    }
+    const products = scan.products.slice(0, limit);
+    const list = numbered(products.map(item => `${item.name}${item.productId ? ` [${item.productId}]` : ''} — ` +
+      `${item.quantities.map(amount).join(' + ') || 'quantity unknown'} across ${item.orders} order${item.orders === 1 ? '' : 's'}`));
+    return response({ ...scan, products },
+      (list ? `Most frequently bought products across ${scan.succeeded} orders:\n\n${list}` : scan.listed === 0 ? 'No orders found.' : 'The orders read contain no product lines.') +
+      (scan.failed ? `\n\nPartial results: ${scan.failed} of ${scan.scanned} orders could not be read and are not counted.` : '') +
+      (scan.unscanned ? `\n${scan.unscanned} orders were not read before the request stopped.` : '') +
+      (scan.failures.some(item => item.stage === 'listing') ? '\nSome order history pages could not be listed.' : ''),
+    scan.completeness === 'partial' || scan.unknownQuantityLines ? 'partial' : products.length ? 'success' : 'empty');
+  }
+
+  async getSessionStatus(): Promise<CallToolResult> {
+    const status = await this.services.session.getStatus?.() ?? { browser: 'unknown', credentials: { hasEmail: null, hasPassword: null },
+      savedCookies: 'unknown', authentication: { state: 'unknown', checkedAt: null } };
+    const favorites = await this.services.favorites.getCacheStatus();
+    const credentials = status.credentials.hasEmail && status.credentials.hasPassword ? 'configured'
+      : status.credentials.hasEmail === null ? 'unknown' : 'missing';
+    return response({ ...status, favorites }, `Browser: ${status.browser}. Credentials: ${credentials}. Saved cookies: ${status.savedCookies}. ` +
+      `Last observed login state: ${status.authentication.state}. Favorites snapshot: ${favorites.state}.`);
+  }
+}
+
+const READ: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+const ADD: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const UPDATE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
+const UNCERTAIN_WRITE = 'If the result has mutation.outcome "unknown", the cart may have changed: call get_cart before any further change and never repeat the request automatically.';
+
+export function registerShoppingTools(services: ShoppingServices): ToolHandler[] {
+  const handlers = new ShoppingHandlers(services);
+  function tool<T>(name: string, title: string, description: string, inputSchema: z.ZodType<T>, outputSchema: z.ZodType,
+    annotations: ToolAnnotations, execute: (args: T) => Promise<CallToolResult>, cartMutation = false): ToolHandler {
+    return { definition: { name, title, description, annotations }, inputSchema, outputSchema, cartMutation,
+      execute: raw => services.session.run(() => execute(raw as T)) };
+  }
+  return [
+    tool('search_products', 'Search products',
+      'Search the Continente.pt catalogue. No login needed. Results show price, unit price and productId; products in your saved favorites rank first. ' +
+      'Reads at most five result pages, so completeness may be "unknown" for broad queries.',
+      contracts.SearchInput, contracts.SearchOutput, READ, args => handlers.searchProducts(args.query, args.limit)),
+    tool('get_product', 'Get product',
+      'Get one product by productId: price, availability and sale rules (sale unit, minimum, maximum and step). ' +
+      'Check this before choosing a quantity for weighted or bulk products. No login needed.',
+      contracts.GetProductInput, contracts.ProductDetailsOutput, READ, args => handlers.getProduct(args.productId)),
+    tool('list_favorites', 'List favorites',
+      'List the products saved as favorites on the account. Uses a local snapshot that is refreshed automatically when missing; ' +
+      'snapshots older than 24 hours are marked stale. Pass refresh: true to fetch the current list from the website.',
+      contracts.FavoritesInput, contracts.FavoritesOutput, READ, args => handlers.listFavorites(args.refresh)),
+    tool('get_cart', 'Get cart',
+      'Read the shopping cart: each line with productId, cartItemId, quantity and price, plus the total. ' +
+      'Use it to check current quantities before changing them and to verify any uncertain change.',
+      contracts.EmptyInput, contracts.CartOutput, READ, () => handlers.getCart()),
+    tool('add_cart_item', 'Add to cart',
+      'Add an amount of a product to the cart, on top of any quantity already there. quantity is in the product sale unit (default 1). ' +
+      `Use set_cart_item_quantity instead when the user wants a specific total. ${UNCERTAIN_WRITE}`,
+      contracts.AddCartItemInput, contracts.MutationOutput, ADD,
+      args => handlers.addCartItem(args.productId, args.quantity, args.cartItemId), true),
+    tool('set_cart_item_quantity', 'Set cart quantity',
+      'Make the cart hold exactly this quantity of a product, adding it if it is not there yet. Zero removes it. ' +
+      `Pass cartItemId from get_cart when the product has more than one line. ${UNCERTAIN_WRITE}`,
+      contracts.SetCartItemQuantityInput, contracts.MutationOutput, UPDATE,
+      args => handlers.setCartItemQuantity(args.productId, args.quantity, args.cartItemId), true),
+    tool('remove_cart_item', 'Remove from cart',
+      'Remove a product line from the cart. Succeeds without changes if it is already absent. ' +
+      `Pass cartItemId from get_cart when the product has more than one line. ${UNCERTAIN_WRITE}`,
+      contracts.RemoveCartItemInput, contracts.MutationOutput, UPDATE,
+      args => handlers.removeCartItem(args.productId, args.cartItemId), true),
+    tool('list_orders', 'List orders',
+      'List recent orders, newest first, with their product lines. Each order has an orderId for get_order. ' +
+      'Use detailLimit or includeLines: false to read fewer details, and pass the returned nextCursor as cursor to continue.',
+      contracts.ListOrdersInput, contracts.OrdersOutput, READ,
+      args => handlers.listOrders(args.limit, { includeLines: args.includeLines,
+        ...(args.detailLimit !== undefined ? { detailLimit: args.detailLimit } : {}), ...(args.cursor !== undefined ? { cursor: args.cursor } : {}) })),
+    tool('get_order', 'Get order',
+      'Get the product lines of one order by its orderId from list_orders (not the displayed order number).',
+      contracts.GetOrderInput, contracts.SingleOrderOutput, READ, args => handlers.getOrder(args.orderId)),
+    tool('list_frequently_bought_products', 'List frequently bought products',
+      'Rank products by how many recent orders contained them, with total quantities per unit. ' +
+      'orderLimit sets how many recent orders to read (default 10); limit caps the products returned (default 25). Useful for building a usual shopping list.',
+      contracts.FrequentlyBoughtInput, contracts.FrequencyOutput, READ,
+      args => handlers.listFrequentlyBoughtProducts(args.orderLimit, args.limit)),
+    tool('get_session_status', 'Get session status',
+      'Report local state without contacting the website: browser status, whether credentials and saved cookies exist, ' +
+      'the last observed login state and favorites snapshot freshness. Never returns secrets.',
+      contracts.EmptyInput, contracts.SessionStatusOutput, { ...READ, openWorldHint: false }, () => handlers.getSessionStatus()),
+  ];
+}

@@ -1,0 +1,77 @@
+{
+  "name": "continentept-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Continente.pt: search products, check sale rules, read favorites and orders, and make verified cart changes.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "continente",
+    "groceries",
+    "shopping",
+    "portugal",
+    "claude",
+    "ai"
+  ],
+  "homepage": "https://github.com/andredelgado/continente-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/andredelgado/continente-mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andredelgado/continente-mcp.git"
+  },
+  "license": "MIT",
+  "author": "André Delgado",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "continentept-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "docs/",
+    ".env.example",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "prebuild": "npm run build:tools && node build/tools/clean.js",
+    "build": "tsc -p tsconfig.json && node build/tools/finish-build.js",
+    "build:tools": "tsc -p tsconfig.tools.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "start": "node dist/cli.js",
+    "login": "node dist/cli.js login",
+    "setup": "node dist/cli.js install-browser",
+    "pretest": "npm run build && tsc -p tsconfig.tests.json",
+    "test": "node build/tools/run-tests.js",
+    "test:browser": "npm run build && tsc -p tsconfig.tests.json && node build/tools/run-tests.js --browser",
+    "test:package": "npm run build:tools && node build/tools/package-smoke.js",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "cheerio": "1.2.0",
+    "playwright": "1.59.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^7.0.2"
+  }
+}

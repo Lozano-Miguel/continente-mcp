@@ -1,0 +1,118 @@
+import { ProductIdSchema } from '../src/domain/index.js';
+import { present, valueOf, errorOf, fixture, rawCart, unitRules, weightedRules, productForm, cartControls, ordersPage } from '../test-support/helpers.js';
+import { parseProductSearchPage, parseFavoritesPages, parseSearchPagination, rankProductsByFavorites } from '../src/parsers/catalog.js';
+import { parseCartResponse, parseSaleRules, validateSaleQuantity, toStorefrontQuantity, parseProductForm, parseCartControls } from '../src/parsers/cart.js';
+import { parseOrderHistory, parseOrderLines, parseOrderQuantity, aggregatePurchaseFrequency } from '../src/parsers/orders.js';
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+test('local catalogue HTML retains slug, exact price, unit price and weighted minimum', () => {
+  const result = parseProductSearchPage(fixture('catalog'));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.length, 3);
+  assert.deepEqual(result.value[0], { productId: '00123', productSlug: 'leite-00123', name: 'Leite Meio Gordo',
+    price: { currency: 'EUR', minorUnits: 129 }, url: 'https://www.continente.pt/produto/leite-00123.html', unitPriceText: '1,29€/l', minimumText: null });
+  assert.equal(present(result.value[1]).minimumText, '600 gr (3 un)');
+  assert.equal(present(result.value[2]).price, null);
+  assert.equal(valueOf(parseProductSearchPage(fixture('catalog') + fixture('catalog'))).length, 3);
+});
+test('favorites parsing deduplicates identities and retains absent price', () => {
+  const favorites = valueOf(parseFavoritesPages([fixture('favorites')]));
+  assert.equal(favorites.length, 2);
+  assert.equal(present(favorites[1]).price, null);
+  const products = valueOf(parseProductSearchPage(fixture('catalog')));
+  assert.equal(present(rankProductsByFavorites(products, [present(favorites[1])])[0]).productId, '456');
+  const renamed = present(rankProductsByFavorites(products, [{ ...present(favorites[0]), name: 'Old name' }])[0]);
+  assert.equal(renamed.productId, '00123'); assert.equal(renamed.favorite, true);
+  const similar = rankProductsByFavorites(products, [{ ...present(favorites[1]), productId: ProductIdSchema.parse('1'), name: 'Leite meio gordo' }]);
+  assert.equal(present(similar[0]).productId, '00123'); assert.equal(present(similar[0]).favorite, false); assert.equal(present(similar[0]).similarity, 1);
+});
+test('pagination accepts only same-origin URLs and finite positive page sizes', () => {
+  assert.deepEqual(valueOf(parseSearchPagination(fixture('catalog'))), { url: 'https://www.continente.pt/on/demandware.store/Sites-continente-Site/default/Search-UpdateGrid?start=35&sz=35', start: 35, size: 35 });
+  assert.equal(parseSearchPagination('<a data-url="https://other.invalid/Search-UpdateGrid?sz=5">').ok, false);
+  assert.equal(parseSearchPagination('<a data-url="/Search-UpdateGrid?sz=-5">').ok, false);
+});
+test('cart JSON supports add and minicart envelopes without invented units or prices', () => {
+  const cart = valueOf(parseCartResponse(rawCart(2)));
+  assert.equal(present(cart.items[0]).productId, '00123');
+  assert.deepEqual(present(cart.items[0]).quantity, { status: 'unknown', value: 2, rawText: null });
+  assert.equal(present(cart.items[0]).price.basis, 'unit');
+  const mini = parseCartResponse({ resources: { customerAuthenticated: true }, basket: { itemsSortedByBrand: [{ items: [{ id: '00123-master', productName: 'Milk', secondaryQuantity: 3, priceTotal: { basePriceValue: 4.25 } }] }] } });
+  assert.equal(present(valueOf(mini).items[0]).price.basis, 'line');
+  assert.equal(valueOf(mini).total, null);
+  assert.equal(present(valueOf(parseCartResponse({ cart: { items: [{ id: '123', productName: 'Milk', quantity: 2 }] } })).items[0]).price.amount, null);
+});
+test('only recognized empty carts succeed; malformed groups and lines fail the entire parse', () => {
+  assert.deepEqual(valueOf(parseCartResponse({ action: 'Cart-MiniCartShow', basket: {}, resources: { customerAuthenticated: true } })),
+    { customerAuthenticated: true, items: [], total: { currency: 'EUR', minorUnits: 0 } });
+  assert.equal(parseCartResponse({ basket: { itemsSortedByBrand: [] } }).ok, true);
+  for (const input of [null, {}, { basket: {} }, { basket: { itemsSortedByBrand: [{}] } },
+    { cart: { items: [{}] } }, rawCart(-1), { cart: { items: [{ id: '123', productName: 'Milk', quantity: null }] } }] as const) assert.equal(parseCartResponse(input).ok, false);
+});
+test('sale conversion retains weighted minimum, explicit zero removal and three decimal formatting', () => {
+  const sale = valueOf(parseSaleRules(weightedRules));
+  assert.equal(errorOf(validateSaleQuantity(2, sale)).code, 'quantity_below_minimum');
+  assert.equal(validateSaleQuantity(0, sale).ok, true);
+  assert.equal(toStorefrontQuantity(valueOf(validateSaleQuantity(12, sale)), sale), '2.4');
+  assert.equal(toStorefrontQuantity(valueOf(validateSaleQuantity(3, valueOf(parseSaleRules(unitRules)))), valueOf(parseSaleRules(unitRules))), '3');
+  for (const invalid of [{ hasAlternativeSaleUnit: true }, { primaryunit: 'kg' }, { primaryunit: 'un', selectedunit: 'secondary' },
+    { minOrderQuantity: 'bad' }, { hasConversionRate: 'false' }, { stepQuantity: -1 }, '{bad}'] as const) assert.equal(parseSaleRules(invalid).ok, false);
+  assert.equal(parseSaleRules({ ...weightedRules, secondaryunit: undefined }).ok, false);
+  assert.equal(valueOf(parseSaleRules({ ...weightedRules, secondaryunit: 'g', primaryToSecondary: 0.001, stepQuantity: 0.001 })).rules.saleUnit, 'g');
+});
+test('sale quantities enforce authoritative maxima, steps and precision without guessing', () => {
+  const sale = valueOf(parseSaleRules({ primaryunit: 'un', stepQuantity: 1, minOrderQuantity: 1, maxNumberOfUnitsPerSale: 5 }));
+  for (const value of [1.5, 6, Infinity, NaN, -1] as const) {
+    const result = validateSaleQuantity(value, sale);
+    assert.equal(result.ok, false); assert.match(result.error.message, /un.*maximum 5 un.*step 1 un/);
+  }
+  for (const value of [0, 1, 5] as const) assert.equal(validateSaleQuantity(value, sale).ok, true);
+  const decimal = valueOf(parseSaleRules({ primaryunit: 'un', stepQuantity: 0.1 }));
+  assert.equal(toStorefrontQuantity(valueOf(validateSaleQuantity(0.1 + 0.2, decimal)), decimal), '0.3');
+  for (const value of [0.3001, 0.35, Number.MAX_SAFE_INTEGER] as const) assert.equal(validateSaleQuantity(value, decimal).ok, false);
+  assert.throws(() => toStorefrontQuantity({ value: 1.5, unit: 'un' }, sale), /step/);
+  assert.throws(() => toStorefrontQuantity({ value: 1, unit: 'kg' }, sale), /unit/);
+});
+test('unestablished bounds and contradictory conversions fail before producing sale rules', () => {
+  for (const input of [{}, { ...unitRules, stepQuantity: 0 }, { ...unitRules, stepQuantity: 0.0001 },
+    { ...unitRules, minOrderQuantity: 6, maxNumberOfUnitsPerSale: 5 }, { ...unitRules, maxNumberOfUnitsPerSale: 'invalid' },
+    { ...weightedRules, unitConversionRate: 0.3 }, { ...weightedRules, secondaryunit: 'g' },
+    { ...weightedRules, secondaryunit: 'l', stepQuantity: 0.2 }, { ...weightedRules, maxNumberOfUnitsPerSale: 5 }] as const) {
+    assert.equal(errorOf(parseSaleRules(input)).code, 'sale_rules_unknown');
+  }
+  const weighted = valueOf(parseSaleRules({ ...weightedRules, stepQuantity: 0.2 }));
+  assert.equal(validateSaleQuantity(3, weighted).ok, true);
+  assert.equal(validateSaleQuantity(3.5, weighted).ok, false);
+  assert.equal(toStorefrontQuantity({ value: 12, unit: 'un' }, weighted), '2.4');
+});
+test('product forms and cart controls are parsed locally and reject wrong product/action', () => {
+  assert.equal(valueOf(parseProductForm(productForm(), ProductIdSchema.parse('00123'))).pid, '00123-master');
+  assert.equal(parseProductForm(productForm(), ProductIdSchema.parse('999')).ok, false);
+  assert.equal(parseProductForm(productForm(unitRules, 'https://other.invalid/add'), ProductIdSchema.parse('00123')).ok, false);
+  const controls = valueOf(parseCartControls(cartControls(), ProductIdSchema.parse('00123')));
+  assert.equal(controls.uuid, 'line-abc');
+  assert.equal(controls.removeUuid, 'line-abc');
+  assert.equal(controls.gtmIndex, '2');
+  assert.equal(errorOf(parseCartControls(cartControls(), ProductIdSchema.parse('999'))).code, 'not_found');
+});
+test('order parser preserves units and unknown quantities instead of inventing purchases', () => {
+  const parsed = valueOf(parseOrderLines(fixture('order')));
+  assert.equal(parsed.length, 2);
+  assert.equal(present(parsed[0]).name, 'Leite Meio Gordo');
+  assert.deepEqual(present(parsed[1]).quantity, { status: 'known', quantity: { value: 1.2, unit: 'kg' } });
+  for (const text of ['?', '2', '1 box', '-2 un', '2 un trailing'] as const) assert.equal(parseOrderQuantity(text).status, 'unknown');
+  const history = parseOrderHistory(ordersPage + '<a href="https://other.invalid/detalhe-encomenda">bad</a>');
+  assert.equal(present(valueOf(history).entries[0]).order.orderNumber, '123456789_001');
+  assert.equal(present(valueOf(history).entries[0]).order.date, '2026-10-02');
+  assert.equal(present(valueOf(history).entries[0]).order.rawDate, '2 outubro 2026');
+  assert.equal(valueOf(history).entries.length, 2);
+});
+test('purchase frequency counts distinct orders and keeps units separate', () => {
+  const lines = valueOf(parseOrderLines(fixture('order')));
+  const result = aggregatePurchaseFrequency([[present(lines[0]), present(lines[0]), { ...present(lines[0]), quantity: present(lines[1]).quantity }], [present(lines[0])]]);
+  assert.equal(present(valueOf(result)[0]).orders, 2);
+  assert.deepEqual(present(valueOf(result)[0]).quantities, [{ value: 6, unit: 'un' }, { value: 1.2, unit: 'kg' }]);
+  const unknown = valueOf(aggregatePurchaseFrequency([[{ ...present(lines[0]), quantity: parseOrderQuantity('?') }]]))[0];
+  assert.deepEqual(present(unknown).quantities, []); assert.equal(present(unknown).unknownQuantityLines, 1);
+});

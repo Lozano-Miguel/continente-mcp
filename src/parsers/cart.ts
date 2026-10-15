@@ -1,0 +1,214 @@
+import { load } from 'cheerio';
+import { z } from 'zod';
+import { CartSchema, ProductSaleRulesSchema, failure, parseMoneyAmount, parseProductReference, parseValue, success } from '../domain/index.js';
+import type { Cart, CartItem, ProductId, ProductSaleRules, Quantity, QuantityUnit, Result, ToolError } from '../domain/index.js';
+import { field, record } from './records.js';
+import { storefrontUrl } from './catalog.js';
+
+const unrecognizedCart = () => failure('invalid_data', 'The cart response was not recognised');
+
+/**
+ * The add-to-cart response lists lines under `cart.items`; the mini-cart groups them under
+ * `basket.itemsSortedByBrand`. A session that never had a basket gets an empty `basket` object.
+ */
+function cartLines(input: unknown): unknown[] | null {
+  const direct = field(input, 'cart', 'items');
+  if (Array.isArray(direct)) return direct;
+  const groups = field(input, 'basket', 'itemsSortedByBrand');
+  if (Array.isArray(groups)) {
+    const lines = groups.map(group => field(group, 'items'));
+    return lines.every(Array.isArray) ? lines.flat() : null;
+  }
+  const basket = record(field(input, 'basket'));
+  return field(input, 'action') === 'Cart-MiniCartShow' && basket && Object.keys(basket).length === 0 ? [] : null;
+}
+
+function cartLine(line: unknown): Result<CartItem, ToolError> {
+  const reference = parseProductReference(field(line, 'id'));
+  // Weighted lines report the amount in the displayed sale unit as secondaryQuantity.
+  const reported = field(line, 'secondaryQuantity') ?? field(line, 'quantity');
+  const rawQuantity = typeof reported === 'string' && reported.trim() !== '' ? Number(reported) : reported;
+  const unitPrice = field(line, 'price', 'sales', 'value');
+  const lineTotal = field(line, 'priceTotal', 'basePriceValue');
+  const price = parseMoneyAmount(unitPrice ?? lineTotal);
+  if (!reference.ok || typeof rawQuantity !== 'number' || !Number.isFinite(rawQuantity) || rawQuantity < 0 || !price.ok) return unrecognizedCart();
+  return parseValue(CartSchema.shape.items.element, {
+    productId: reference.value.productId,
+    cartItemId: field(line, 'UUID') ?? field(line, 'uuid') ?? null,
+    name: field(line, 'productName'),
+    quantity: { status: 'unknown', value: rawQuantity, rawText: null },
+    price: { amount: price.value, basis: unitPrice != null ? 'unit' : lineTotal != null ? 'line' : 'unknown' },
+  }, 'cart line');
+}
+
+export function parseCartResponse(input: unknown): Result<Cart, ToolError> {
+  const lines = cartLines(input);
+  if (!lines) return unrecognizedCart();
+  const items: CartItem[] = [];
+  for (const line of lines) {
+    const item = cartLine(line);
+    if (!item.ok) return item;
+    items.push(item.value);
+  }
+  const lineIds = items.map(item => item.cartItemId).filter(id => id !== null);
+  if (new Set(lineIds).size !== lineIds.length) return failure('invalid_data', 'The cart contains duplicate line identifiers');
+  const customerAuthenticated = field(input, 'resources', 'customerAuthenticated') === true;
+  const total = lines.length === 0 && field(input, 'action') === 'Cart-MiniCartShow'
+    ? success({ currency: 'EUR' as const, minorUnits: 0 })
+    : parseMoneyAmount(field(input, 'cart', 'totalProductsValueNumber') ?? field(input, 'basket', 'totals', 'productsTotalPriceOnly') ??
+      field(input, 'basket', 'totals', 'productsTotalPriceOnlyWithSDR'));
+  return total.ok ? success({ customerAuthenticated, items, total: total.value }) : total;
+}
+
+export interface SaleMetadata {
+  rules: ProductSaleRules;
+  /** Sold in a unit other than the storefront's primary unit (for example pieces of a product priced per kg). */
+  alternativeUnit: boolean;
+  /** `step` parameter for quantity updates, in storefront units. */
+  storefrontStep: string;
+  /** `dimension` parameter for quantity updates. */
+  updateDimension: string;
+}
+
+const amount = z.union([z.number(), z.string().regex(/^\d+(?:\.\d+)?$/).transform(Number)]).pipe(z.number().finite().nonnegative());
+const MeasureOptionsSchema = z.object({
+  primaryunit: z.string().min(1),
+  secondaryunit: z.string().nullish(),
+  selectedunit: z.string().nullish(),
+  hasAlternativeSaleUnit: z.boolean().nullish(),
+  hasConversionRate: z.boolean().nullish(),
+  primaryToSecondary: amount.nullish(),
+  unitConversionRate: amount.nullish(),
+  minOrderQuantity: amount.nullish(),
+  stepQuantity: amount.nullish(),
+  maxNumberOfUnitsPerSale: amount.nullish(),
+});
+const MEASURES: Partial<Record<string, { dimension: 'mass' | 'volume'; grams: number }>> = {
+  kg: { dimension: 'mass', grams: 1000 }, g: { dimension: 'mass', grams: 1 },
+  l: { dimension: 'volume', grams: 1000 }, ml: { dimension: 'volume', grams: 1 },
+};
+const unknownRules = (message: string) => failure('sale_rules_unknown', message);
+
+/** Interpret the storefront's `data-measure-options`. Anything ambiguous is rejected rather than guessed. */
+export function parseSaleRules(input: unknown): Result<SaleMetadata, ToolError> {
+  let raw = input;
+  if (typeof input === 'string') { try { raw = JSON.parse(input); } catch { return unknownRules('Sale rules are not valid JSON'); } }
+  const parsed = MeasureOptionsSchema.safeParse(raw);
+  if (!parsed.success) return unknownRules('Sale rules are missing or malformed');
+  const options = parsed.data;
+  const alternativeUnit = options.hasAlternativeSaleUnit === true || options.hasConversionRate === true;
+
+  let saleUnit: unknown = 'un';
+  let factor = 1;
+  if (alternativeUnit) {
+    const rates = [options.primaryToSecondary, options.unitConversionRate].filter(rate => rate != null);
+    if (!rates.length || rates.some(rate => rate !== rates[0]) || !rates[0]) return unknownRules('The unit conversion is missing or inconsistent');
+    factor = rates[0];
+    saleUnit = options.secondaryunit;
+    const sale = MEASURES[String(saleUnit)]; const storefront = MEASURES[options.primaryunit];
+    if (sale && storefront && (sale.dimension !== storefront.dimension || Math.abs(factor - sale.grams / storefront.grams) > 1e-12)) {
+      return unknownRules('The unit conversion contradicts the declared units');
+    }
+    // The maximum's unit is not stated for alternative-unit products, so it cannot be applied safely.
+    if (options.maxNumberOfUnitsPerSale != null) return unknownRules('The maximum quantity has no established unit for this product');
+  } else if (options.primaryunit !== 'un' || (options.selectedunit != null && options.selectedunit !== 'primary')) {
+    return unknownRules('Only unit sales and declared alternative units are supported');
+  }
+
+  const step = options.stepQuantity ?? (saleUnit === 'un' ? factor : null);
+  if (!step || !milliquantity(step).ok) return unknownRules('A positive step with at most three decimals is required');
+  const unit = saleUnit as QuantityUnit;
+  const minimum = options.minOrderQuantity ? { value: options.minOrderQuantity / factor, unit } : null;
+  const maximum = options.maxNumberOfUnitsPerSale != null ? { value: options.maxNumberOfUnitsPerSale, unit } : null;
+  const rules = ProductSaleRulesSchema.safeParse({ saleUnit, storefrontUnit: alternativeUnit ? options.primaryunit : 'un',
+    storefrontUnitsPerSaleUnit: factor, minimum, maximum, step: { value: step / factor, unit } });
+  if (!rules.success) return unknownRules('Sale rules use an unsupported unit or contradictory bounds');
+  return success({ rules: rules.data, alternativeUnit, storefrontStep: String(step), updateDimension: options.secondaryunit || options.primaryunit });
+}
+
+/** Three storefront decimals; tolerate binary arithmetic noise, never round a requested amount. */
+function milliquantity(value: number): Result<number, ToolError> {
+  const scaled = value * 1000;
+  const integer = Math.round(scaled);
+  return Number.isSafeInteger(integer) && Math.abs(scaled - integer) <= 0.000001
+    ? success(integer) : failure('invalid_input', 'Quantity exceeds supported three-decimal storefront precision');
+}
+export function validateSaleQuantity(value: number, metadata: SaleMetadata): Result<Quantity, ToolError> {
+  const { saleUnit: unit, minimum, maximum, step } = metadata.rules;
+  const display = (value: number) => Number(value.toPrecision(12));
+  const constraints = [minimum && `minimum ${display(minimum.value)} ${unit}`, maximum && `maximum ${display(maximum.value)} ${unit}`, step && `step ${display(step.value)} ${unit}`].filter(Boolean).join(', ');
+  const invalid = (message: string) => failure('invalid_input', `${message}. Use ${unit}${constraints ? ` (${constraints})` : ''}.`);
+  if (!Number.isFinite(value) || value < 0) return invalid('Quantity must be finite and non-negative');
+  if (value === 0) return success({ value, unit });
+  const primary = value * metadata.rules.storefrontUnitsPerSaleUnit;
+  if (!Number.isFinite(primary)) return unknownRules('The quantity cannot be converted to storefront units');
+  const amount = milliquantity(primary);
+  if (!amount.ok) return invalid(amount.error.message);
+  if (minimum && value < minimum.value - 1e-9) {
+    return failure('quantity_below_minimum', `The minimum is ${display(minimum.value)} ${unit}${constraints ? ` (${constraints})` : ''}.`);
+  }
+  if (maximum && value > maximum.value + 1e-9) return invalid('Quantity is above the maximum');
+  if (step) {
+    const increment = milliquantity(step.value * metadata.rules.storefrontUnitsPerSaleUnit);
+    if (!increment.ok || increment.value <= 0) return unknownRules('The step cannot be represented in storefront units');
+    if (amount.value % increment.value !== 0) return invalid('Quantity is not a multiple of the supported step');
+  }
+  return success({ value, unit });
+}
+export function toStorefrontQuantity(quantity: Quantity, metadata: SaleMetadata): string {
+  if (quantity.unit !== metadata.rules.saleUnit) throw new Error('Quantity unit does not match sale metadata');
+  const validated = validateSaleQuantity(quantity.value, metadata);
+  if (!validated.ok) throw new Error(validated.error.message);
+  return (Math.round(quantity.value * metadata.rules.storefrontUnitsPerSaleUnit * 1000) / 1000).toString();
+}
+export function selectCartItem(cart: Cart, productId: ProductId, cartItemId?: string): Result<CartItem | null, ToolError> {
+  const matches = cart.items.filter(item => item.productId === productId && (cartItemId === undefined || item.cartItemId === cartItemId));
+  if (matches.length > 1) return failure('invalid_input', 'Multiple cart lines match this product. Use get_cart and supply cartItemId.');
+  return success(matches[0] ?? null);
+}
+export function observedCartQuantity(cart: Cart, productId: ProductId, cartItemId?: string): number | null {
+  const selected = selectCartItem(cart, productId, cartItemId);
+  if (!selected.ok) return null;
+  const item = selected.value;
+  return !item ? 0 : item.quantity.status === 'known' ? item.quantity.quantity.value : item.quantity.value;
+}
+
+const FormSchema = z.object({ pid: z.string().min(1), action: z.string().min(1), csrf: z.string() });
+export function parseProductForm(input: unknown, expectedId: ProductId) {
+  const $ = typeof input === 'string' ? load(input) : null;
+  const raw = $ ? { pid: $('input[name="productID"]').val(), action: $('input.add-to-cart-url').val(),
+    csrf: $('input[name="csrf_token"]').val() ?? '', measureOptions: $('.ct-tile-quantity-update[data-measure-options]').first().attr('data-measure-options') ?? '{}' } : record(input);
+  const parsed = parseValue(FormSchema, raw, 'product form');
+  if (!parsed.ok) return parsed;
+  const ref = parseProductReference(parsed.value.pid);
+  if (!ref.ok || ref.value.productId !== expectedId || !storefrontUrl(parsed.value.action)) return failure('invalid_data', 'The product page has an unexpected add-to-cart form');
+  const sale = parseSaleRules(raw?.measureOptions ?? '{}');
+  return sale.ok ? success({ ...parsed.value, sale: sale.value }) : sale;
+}
+export function parseCartControls(html: string, productId: ProductId, cartItemId?: string) {
+  const $ = load(html);
+  const item = $('[data-pid][data-product-name]').filter((_, element) => {
+    const candidate = $(element);
+    const reference = parseProductReference(candidate.attr('data-pid'));
+    const matchesProduct = reference.ok && reference.value.productId === productId;
+    const uuid = candidate.find('.ct-tile-quantity-update').first().attr('data-uuid') ?? candidate.attr('data-uuid');
+    return matchesProduct && (cartItemId === undefined || uuid === cartItemId);
+  });
+  if (!item.length) return failure('not_found', 'The product is not in the cart.');
+  if (item.length !== 1) return failure('invalid_input', 'Multiple cart controls match. Use get_cart and supply cartItemId.');
+  const update = item.find('.ct-tile-quantity-update').first();
+  const remove = item.find('button.remove-product').first();
+  const uuid = update.attr('data-uuid') ?? item.attr('data-uuid') ?? null;
+  const removeUuid = remove.attr('data-uuid') ?? item.attr('data-uuid') ?? null;
+  if (uuid && removeUuid && uuid !== removeUuid) return failure('invalid_data', 'The cart line has conflicting identifiers');
+  return success({
+    action: update.attr('data-action') ?? null, uuid: update.attr('data-uuid') ?? item.attr('data-uuid') ?? null,
+    removeAction: remove.attr('data-action') ?? null, removeUuid: remove.attr('data-uuid') ?? item.attr('data-uuid') ?? null,
+    measureOptions: update.attr('data-measure-options') ?? '{}', gtmIndex: item.attr('data-idx') || '1',
+  });
+}
+export function parseMutationReceipt(input: unknown): Result<void, ToolError> {
+  if (!record(input) || field(input, 'error') || field(input, 'success') === false ||
+    field(input, 'resources', 'customerAuthenticated') === false) return failure('cart_change_rejected');
+  return success(undefined);
+}

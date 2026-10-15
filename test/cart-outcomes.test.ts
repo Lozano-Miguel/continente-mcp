@@ -1,0 +1,84 @@
+import { present, ok, rawCart, productForm, cartControls, weightedRules } from '../test-support/helpers.js';
+import type { StorefrontSession } from '../src/session/browser.js';
+import { double, mutationOf, recoveryOf } from '../test-support/assertions.js';
+import { CartService } from '../src/services/cart.js';
+import { CartClient, StorefrontClient } from '../src/clients/storefront.js';
+import { createShoppingApplication } from '../src/runtime.js';
+import { injectedServices, connect } from '../test-support/mcp-fixture.js';
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+test('preparation failures are not_applied and never submit a cart request', async t => {
+  const { services, state } = injectedServices(); let writes = 0;
+  const client = new CartClient(new StorefrontClient(double<StorefrontSession>({ async ensureReady() { throw new Error('private context details'); } })));
+  client.fetchCart = async () => ok(rawCart(2)); client.fetchProductForm = async () => ok(productForm());
+  client.submitCartMutation = async () => { writes++; return ok({}); };
+  services.cart = new CartService(client); const { client: mcp } = await connect(t, services);
+  const result = await mcp.callTool({ name: 'add_cart_item', arguments: { productId: '00123' } });
+  assert.equal(result.isError, true); assert.equal(mutationOf(result).outcome, 'not_applied');
+  assert.equal(writes, 0); assert.equal(state.refreshes, 0); assert.doesNotMatch(JSON.stringify(result), /private context/);
+});
+test('preflight exceptions from injected gateways cannot become possibly-applied failures', async () => {
+  for (const stage of ['cart', 'product', 'controls', 'prepare'] as const) {
+    let writes = 0; const throws = () => { throw new Error('synthetic private data'); };
+    const client = { async fetchCart() { return stage === 'cart' ? throws() : ok(rawCart(2)); },
+      async fetchProductForm() { return stage === 'product' ? throws() : ok(productForm()); },
+      async fetchCartControls() { return stage === 'controls' ? throws() : ok(cartControls()); },
+      async prepareCartMutation() { return stage === 'prepare' ? throws() : ok(async () => { writes++; return ok({}); }); },
+      async submitCartMutation() { writes++; return ok({}); } };
+    const service = new CartService(client);
+    const result = stage === 'controls' ? await service.setCartItemQuantity('00123', 1) : await service.addCartItem('00123', 1);
+    assert.equal(result.ok, false); assert.equal(writes, 0); assert.doesNotMatch(result.error.message, /private/);
+  }
+});
+test('timeout, invalid JSON, lost context and post-write authentication expiry retain unknown recovery', async t => {
+  for (const fault of ['timeout', 'json', 'context', 'auth_payload', 'unauthorized'] as const) {
+    const { services, state } = injectedServices(); let writes = 0; const authentication: boolean[] = [];
+    const client = new CartClient(new StorefrontClient(double<StorefrontSession>({ recordAuthentication(value) { authentication.push(value); }, async ensureReady() { return { page: { url: () => 'https://www.continente.pt/' }, context: { request: {
+      async post() {
+        writes++;
+        if (fault === 'timeout' || fault === 'context') throw new Error(fault);
+        return { ok: () => fault !== 'unauthorized', status: () => fault === 'unauthorized' ? 401 : 200,
+          async json() { if (fault === 'json') throw new Error('private invalid JSON'); return { resources: { customerAuthenticated: false } }; } };
+      },
+    } } }; } })));
+    client.fetchCart = async () => ok(rawCart(2)); client.fetchProductForm = async () => ok(productForm());
+    services.cart = new CartService(client); const { client: mcp } = await connect(t, services);
+    const result = await mcp.callTool({ name: 'add_cart_item', arguments: { productId: '00123' } });
+    assert.equal(result.isError, true, fault); assert.equal(mutationOf(result).outcome, 'unknown', fault);
+    assert.equal(recoveryOf(result).automaticReplay, false);
+    assert.deepEqual(Object.keys(present(result.structuredContent)), ['result']); assert.equal(writes, 1); assert.equal(state.refreshes, 0);
+    assert.doesNotMatch(JSON.stringify(result), /private/);
+    assert.deepEqual(authentication, ['auth_payload', 'unauthorized'].includes(fault) ? [false] : [], fault);
+  }
+});
+test('weighted second-step preparation or submission failure never replays the first add', async t => {
+  for (const second of ['prepare', 'submit'] as const) {
+    const { services, state } = injectedServices(); let prepared = 0; let adds = 0; let sets = 0;
+    const client = new CartClient(new StorefrontClient(double<StorefrontSession>({ async ensureReady() {
+      if (++prepared === 2 && second === 'prepare') throw new Error('lost context');
+      return { page: { url: () => 'https://www.continente.pt/' }, context: { request: {
+        async post() { adds++; return { ok: () => true, status: () => 200, async json() { return {}; } }; },
+        async get() { sets++; throw new Error('lost response'); },
+      } } };
+    } })));
+    client.fetchCart = async () => ok(rawCart(adds ? 3 : 0));
+    client.fetchProductForm = async () => ok(productForm(weightedRules)); client.fetchCartControls = async () => ok(cartControls(weightedRules));
+    services.cart = new CartService(client); const { client: mcp } = await connect(t, services);
+    const result = await mcp.callTool({ name: 'add_cart_item', arguments: { productId: '00123', quantity: 12 } });
+    assert.equal(mutationOf(result).outcome, 'unknown');
+    assert.equal(adds, 1); assert.equal(sets, second === 'prepare' ? 0 : 1); assert.equal(state.refreshes, 0);
+  }
+});
+test('cancellation while preparing a submission is not_applied', async () => {
+  const { services } = injectedServices(); let started: () => void = () => { throw new Error("Gate has not been initialized"); }; let writes = 0;
+  const preparing = new Promise<void>(resolve => { started = resolve; });
+  services.cart = new CartService({ async fetchCartControls() { throw new Error('Unexpected controls read'); }, async fetchCart() { return ok(rawCart(2)); }, async fetchProductForm() { return ok(productForm()); },
+    async prepareCartMutation() { started(); return new Promise(() => {}); }, async submitCartMutation() { writes++; return ok({}); } });
+  const app = createShoppingApplication({ version: 'test', services }); const cancel = new AbortController();
+  const call = app.dispatchToolCall('add_cart_item', { productId: '00123' }, { signal: cancel.signal });
+  await preparing; cancel.abort(); const result = await call;
+  assert.equal(mutationOf(result).outcome, 'not_applied'); assert.equal(writes, 0);
+  await app.close();
+});

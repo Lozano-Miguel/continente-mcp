@@ -1,0 +1,73 @@
+# Contributing
+
+Thanks for helping improve Continente MCP. Bug reports and pull requests are welcome.
+
+## Setup
+
+Use Node.js 22 or newer.
+
+```sh
+npm ci
+npm run build
+npm run setup        # downloads Chromium for the browser tests
+```
+
+## Checks
+
+```sh
+npm run typecheck    # source, tests and tooling
+npm test             # offline suite; never contacts the website
+npm run test:browser # real Chromium against local fixtures only
+npm run test:package # packs, installs and starts the published tarball
+npm audit --omit=dev
+```
+
+CI runs all of these on Linux (Node 22 and 24) and on macOS and Windows (Node 24).
+
+Tests never touch a real account. Browser tests serve every request from local fixtures and
+block anything else. Fixtures in `test/fixtures/` are small synthetic pages that use the
+same selectors as the live site; they must not contain real customer, order or session data.
+
+## Project layout
+
+| Path | Responsibility |
+| --- | --- |
+| `src/mcp/` | Tool definitions, schemas, result envelopes and text output |
+| `src/services/` | Shopping rules: search ranking, favorites cache, cart verification, order scans |
+| `src/domain/` | Validated types for identifiers, money, quantities, errors and outcomes |
+| `src/parsers/` | Pure functions that turn website HTML/JSON into domain values |
+| `src/clients/` | Website navigation, HTTP requests and login |
+| `src/session/` | Browser lifetime, request deadlines, cancellation and the serial queue |
+| `src/stores/` | Atomic, private cookie and favorites files |
+| `src/config.ts`, `src/runtime.ts`, `src/cli.ts` | Settings, wiring and the command line |
+
+Website data enters as `unknown` and is validated by a parser before services use it.
+Services return `Result<T, ToolError>`; only the MCP layer formats output. Keep stdout for
+protocol messages only.
+
+## Guidelines
+
+- **Cart safety comes first.** Every cart change must be confirmed by reading the cart back.
+  Anything that fails after a request may have been sent must report
+  `mutation.outcome: "unknown"` and must never be retried automatically. Add a regression test
+  that counts writes when touching this path.
+- **Never guess.** Unknown prices, quantities, units and completeness stay explicitly
+  unknown rather than defaulting to a plausible value.
+- **Fix at the boundary.** When the website changes, update the parser and its fixture, and
+  add a test for the new markup.
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for pull request titles
+  (`fix:`, `feat:`, `docs:`, ...). Pull requests are squash-merged.
+- Note user-facing changes under `Unreleased` in `CHANGELOG.md`. Don't bump the version in feature pull requests.
+
+## Releasing
+
+Maintainers only.
+
+1. Open a `chore: release X.Y.Z` pull request that runs `npm version X.Y.Z --no-git-tag-version`
+   and moves the `Unreleased` entries in `CHANGELOG.md` under the new version.
+2. After it is merged, create a GitHub release with tag `vX.Y.Z` on that commit, using the
+   changelog entries as its notes. Mark it as a prerelease for `-rc` and similar versions.
+3. Publishing the release runs the test matrix and publishes the same version to npm with
+   provenance (`latest`, or `next` for prereleases).
+
+Never reuse or overwrite a published version.
