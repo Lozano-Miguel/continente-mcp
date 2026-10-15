@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
 ### Added
 
 - One-click Claude Desktop extension (`continentept-mcp.mcpb`) attached to every release. It asks for your email and password at install time.
@@ -33,6 +35,7 @@ All notable changes to this project are documented here. The format follows
 - Automatic sign-in from environment variables or a private credentials file, and a `login` command.
 - The `basket-planner` skill for planning a shopping list and updating the basket.
 
-[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/andredelgado/continente-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/andredelgado/continente-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/andredelgado/continente-mcp/releases/tag/v0.1.0
