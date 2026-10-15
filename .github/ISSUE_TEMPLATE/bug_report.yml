@@ -1,0 +1,49 @@
+name: Bug report
+description: A tool fails, returns wrong data, or the website changed.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste your email, password, session file (`session.json`), order numbers or screenshots of your account.** Error codes and short descriptions are enough.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `npx -y continentept-mcp --version`, or the extension version in Claude Desktop.
+      placeholder: 0.3.1
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed?
+      options:
+        - Claude Desktop extension (.mcpb)
+        - npx / npm in an MCP client config
+        - Source checkout
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and operating system
+      placeholder: Claude Desktop on macOS 15
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool and error code
+      description: For example `get_cart` returning `invalid_data`.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The request you made, without personal data.

@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a new tool or an improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to do?
+      description: Describe the shopping task, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today?
+      description: How you work around it now, if at all.
