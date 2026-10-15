@@ -46,7 +46,7 @@ test('private file stores reject unversioned data and validate cache/account sco
   await mkdir(join(root, 'state'));
   await writeFile(file, JSON.stringify({ lastUpdated: '2026-10-14T12:00:00Z', favorites: [{ productId: 'leite-00123.html', name: 'Leite Meio Gordo', price: '1,29€', url: '/produto/leite-00123.html' }] }));
   assert.equal((await store.load()).ok, false); // Unscoped account ownership is unverified.
-  const cache = { schemaVersion: 1 as const, accountScope: 'account-a', fetchedAt: '2026-10-14T12:00:00Z', favorites: [] };
+  const cache = { schemaVersion: 2 as const, accountScope: 'account-a', fetchedAt: '2026-10-14T12:00:00Z', favorites: [] };
   assert.equal((await store.save(cache)).ok, true);
   assert.deepEqual(JSON.parse(await readFile(`${file}.bak`, 'utf8')), cache);
   assert.equal((await new FileFavoritesStore(file, 'account-b').load()).ok, false);

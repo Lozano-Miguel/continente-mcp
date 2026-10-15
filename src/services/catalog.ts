@@ -49,7 +49,7 @@ export class FavoritesService {
     const products = parseFavoritesPages(response.value.pages);
     if (!products.ok) return products;
     if (scope !== this.scope()) return failure('cache_unavailable', 'Favorites account/session changed during refresh');
-    const cache: FavoritesCache = { schemaVersion: 1, accountScope: scope,
+    const cache: FavoritesCache = { schemaVersion: 2, accountScope: scope,
       fetchedAt: this.clock.now().toISOString(), favorites: products.value, completeness: 'complete' };
     const saved = await requestIO(() => this.store.save(cache));
     return saved.ok ? success(this.snapshot(cache, 'website')) : saved;
@@ -82,7 +82,8 @@ export class CatalogService {
         if (!products.length) return parsed;
         failures.push(parsed.error); break;
       }
-      products.push(...parsed.value);
+      products.push(...parsed.value.products);
+      failures.push(...parsed.value.problems);
     }
     const unique = uniqueProducts(products);
     const favorites = cache?.favorites ?? [];

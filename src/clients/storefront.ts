@@ -62,7 +62,7 @@ export class CatalogClient implements CatalogGateway {
     for (let index = 0; index < 5; index++) {
       const parsed = parseProductSearchPage(html);
       if (!parsed.ok) { if (!pages.length) return parsed; failures.push(parsed.error); break; }
-      const previousCount = ids.size; parsed.value.forEach(product => ids.add(product.productId)); pages.push(html);
+      const previousCount = ids.size; parsed.value.products.forEach(product => ids.add(product.productId)); pages.push(html);
       reportProgress(pages.length, 5, 'Reading catalogue pages');
       const continuation = parseSearchPagination(html);
       if (!continuation.ok) { failures.push(continuation.error); nextCursor = null; break; }

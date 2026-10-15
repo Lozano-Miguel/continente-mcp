@@ -21,8 +21,8 @@ test('shopping tools work through real MCP transport using injected clients', as
   assert.equal((await client.listTools()).tools.length, 11); assert.equal(state.reads, 0);
   const search = await client.callTool({ name: 'search_products', arguments: { query: 'milk', limit: 1 } });
   assert.equal(present(dataOf(search, SearchData).products[0]).productId, '00123');
-  assert.equal(present(present(dataOf(search, SearchData).products[0]).price).minorUnits, 129);
-  assert.equal(present(present(dataOf(search, SearchData).products[0]).price).currency, 'EUR');
+  assert.equal(present(present(dataOf(search, SearchData).products[0]).price).amount.minorUnits, 129);
+  assert.equal(present(present(dataOf(search, SearchData).products[0]).price).amount.currency, 'EUR');
   assert.match(textOf((await client.callTool({ name: 'list_favorites' }))), /2 favorites/);
   assert.match(textOf((await client.callTool({ name: 'list_favorites', arguments: { refresh: true } }))), /2 favorites \(fetched from the website\)/);
   const cart = await client.callTool({ name: 'get_cart' });

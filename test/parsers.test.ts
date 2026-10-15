@@ -1,4 +1,4 @@
-import { ProductIdSchema } from '../src/domain/index.js';
+import { ProductIdSchema, parsePriceTag } from '../src/domain/index.js';
 import { present, valueOf, errorOf, fixture, rawCart, unitRules, weightedRules, productForm, cartControls, ordersPage } from '../test-support/helpers.js';
 import { parseProductSearchPage, parseFavoritesPages, parseSearchPagination, rankProductsByFavorites } from '../src/parsers/catalog.js';
 import { parseCartResponse, parseSaleRules, validateSaleQuantity, toStorefrontQuantity, parseProductForm, parseCartControls } from '../src/parsers/cart.js';
@@ -7,26 +7,48 @@ import { parseOrderHistory, parseOrderLines, parseOrderQuantity, aggregatePurcha
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-test('local catalogue HTML retains slug, exact price, unit price and weighted minimum', () => {
-  const result = parseProductSearchPage(fixture('catalog'));
-  assert.equal(result.ok, true);
-  assert.equal(result.value.length, 3);
-  assert.deepEqual(result.value[0], { productId: '00123', productSlug: 'leite-00123', name: 'Leite Meio Gordo',
-    price: { currency: 'EUR', minorUnits: 129 }, url: 'https://www.continente.pt/produto/leite-00123.html', unitPriceText: '1,29€/l', minimumText: null });
-  assert.equal(present(result.value[1]).minimumText, '600 gr (3 un)');
-  assert.equal(present(result.value[2]).price, null);
-  assert.equal(valueOf(parseProductSearchPage(fixture('catalog') + fixture('catalog'))).length, 3);
+const eur = (minorUnits: number) => ({ currency: 'EUR' as const, minorUnits });
+test('catalogue tiles keep each price with what it is for, the pack size and the minimum', () => {
+  const page = valueOf(parseProductSearchPage(fixture('catalog')));
+  assert.equal(page.products.length, 3); assert.deepEqual(page.problems, []);
+  assert.deepEqual(page.products[0], { productId: '00123', productSlug: 'leite-00123', name: 'Leite Meio Gordo',
+    price: { amount: eur(129), per: 'item' }, url: 'https://www.continente.pt/produto/leite-00123.html',
+    secondaryPrice: { amount: eur(129), per: 'l' }, packageText: '1 lt', minimumText: null });
+  const banana = present(page.products[1]);
+  assert.deepEqual([banana.price, banana.secondaryPrice], [{ amount: eur(119), per: 'kg' }, { amount: eur(24), per: 'piece' }]);
+  assert.equal(banana.minimumText, '600 gr (3 un)'); assert.equal(banana.packageText, null);
+  assert.equal(present(page.products[2]).price, null);
+  assert.equal(valueOf(parseProductSearchPage(fixture('catalog') + fixture('catalog'))).products.length, 3);
+});
+test('one unreadable result is reported without failing the rest of the page', () => {
+  const page = valueOf(parseProductSearchPage(fixture('catalog-mixed')));
+  assert.deepEqual(page.products.map(product => [product.productId, product.price?.per ?? null]), [['7001', 'kg'], ['7002', null], ['7003', 'item']]);
+  assert.equal(present(page.products[2]).packageText, '12 un');
+  assert.deepEqual(page.problems.map(problem => problem.message), [
+    'Search result 2 (product 7002) has a price in an unrecognised format; its price is unknown.',
+    'Search result 3 was not recognised and was skipped.',
+  ]);
+  const broken = parseProductSearchPage('<main><div class="ct-inner-tile-wrap"><span>no product</span></div></main>');
+  assert.equal(broken.ok, false);
+});
+test('price labels parse strictly and say what they are for', () => {
+  const cases: [string, unknown][] = [['1,29€', { amount: eur(129), per: 'item' }], [' 1,19€/kg ', { amount: eur(119), per: 'kg' }],
+    ['0,24€/un', { amount: eur(24), per: 'piece' }], ['1,29€/lt', { amount: eur(129), per: 'l' }], ['2,5 € / L', { amount: eur(250), per: 'l' }],
+    ['12€', { amount: eur(1200), per: 'item' }], ['', null]];
+  for (const [label, expected] of cases) assert.deepEqual(valueOf(parsePriceTag(label)), expected, label);
+  for (const label of ['1,199€', '€1,29', '1,29€/dz', 'Preço sob consulta', '1,29']) assert.equal(parsePriceTag(label).ok, false, label);
 });
 test('favorites parsing deduplicates identities and retains absent price', () => {
   const favorites = valueOf(parseFavoritesPages([fixture('favorites')]));
   assert.equal(favorites.length, 2);
   assert.equal(present(favorites[1]).price, null);
-  const products = valueOf(parseProductSearchPage(fixture('catalog')));
+  const { products } = valueOf(parseProductSearchPage(fixture('catalog')));
   assert.equal(present(rankProductsByFavorites(products, [present(favorites[1])])[0]).productId, '456');
   const renamed = present(rankProductsByFavorites(products, [{ ...present(favorites[0]), name: 'Old name' }])[0]);
   assert.equal(renamed.productId, '00123'); assert.equal(renamed.favorite, true);
-  const similar = rankProductsByFavorites(products, [{ ...present(favorites[1]), productId: ProductIdSchema.parse('1'), name: 'Leite meio gordo' }]);
-  assert.equal(present(similar[0]).productId, '00123'); assert.equal(present(similar[0]).favorite, false); assert.equal(present(similar[0]).similarity, 1);
+  // A favorite with a similar name but a different product does not reorder the website's results.
+  const similar = rankProductsByFavorites(products, [{ ...present(favorites[1]), productId: ProductIdSchema.parse('1'), name: 'Sold out product' }]);
+  assert.deepEqual(similar.map(product => [product.productId, product.favorite]), [['00123', false], ['456', false], ['789', false]]);
 });
 test('pagination accepts only same-origin URLs and finite positive page sizes', () => {
   assert.deepEqual(valueOf(parseSearchPagination(fixture('catalog'))), { url: 'https://www.continente.pt/on/demandware.store/Sites-continente-Site/default/Search-UpdateGrid?start=35&sz=35', start: 35, size: 35 });

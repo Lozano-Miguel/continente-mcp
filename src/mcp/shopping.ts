@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolHandler } from './server.js';
 import type { SessionService, MutationResult } from '../ports.js';
-import type { UpdateStatus, CartMutationResult, Money, ObservedQuantity, Order, ProductDetails, ProductSaleRules, Quantity, QuotedMoney, Result, ToolError } from '../domain/index.js';
+import type { PriceTag, UpdateStatus, CartMutationResult, Money, ObservedQuantity, Order, ProductDetails, ProductSaleRules, Quantity, QuotedMoney, Result, ToolError } from '../domain/index.js';
 import { failure } from '../domain/index.js';
 import * as contracts from './contracts.js';
 import { withAuthenticationRecovery } from '../services/recovery.js';
@@ -18,7 +18,19 @@ export interface ShoppingServices {
 type Status = 'success' | 'empty' | 'partial';
 type MutationSummary = z.infer<typeof contracts.ErrorResultSchema>['mutation'];
 
-const NOT_LOGGED_IN = 'Sign-in required. Configure CONTINENTE_EMAIL and CONTINENTE_PASSWORD (see the configuration guide) or run `continentept-mcp login`.';
+const CONFIGURATION_GUIDE = 'https://github.com/andredelgado/continente-mcp/blob/main/docs/configuration.md';
+const PUBLIC_TOOLS = 'Searching and product details work without signing in.';
+/** What to do about a sign-in failure, depending on whether credentials are configured at all. */
+export function signInHelp(credentialsConfigured: boolean | null): string {
+  if (credentialsConfigured === false) {
+    return 'Sign-in required: no Continente email and password are configured. In the Claude Desktop extension, enter them in the '
+      + `extension's settings; in other setups, set CONTINENTE_EMAIL and CONTINENTE_PASSWORD (see ${CONFIGURATION_GUIDE}). ${PUBLIC_TOOLS}`;
+  }
+  const cause = credentialsConfigured ? 'Continente did not accept the configured email and password, or asked for extra verification'
+    : 'Continente did not accept the sign-in, or no credentials are configured';
+  return `Sign-in failed: ${cause}. Check the credentials, or run \`continentept-mcp login --show-browser\` in a terminal `
+    + `to sign in and complete any verification (see ${CONFIGURATION_GUIDE}). ${PUBLIC_TOOLS}`;
+}
 const CHECKOUT_URL = 'https://www.continente.pt/checkout/carrinho/';
 
 // Text content mirrors the structured result for clients that only show text to the model,
@@ -27,6 +39,8 @@ const euros = (money: Money | null) => money === null ? 'price unavailable' : `�
 const amount = (quantity: Quantity) => `${Number(quantity.value.toPrecision(12))} ${quantity.unit}`;
 const observed = (quantity: ObservedQuantity) => quantity.status === 'known' ? amount(quantity.quantity)
   : quantity.value === null ? 'quantity unknown' : `${quantity.value} (unit unknown)`;
+const PER: Record<PriceTag['per'], string> = { item: '', piece: ' per piece', kg: '/kg', l: '/l' };
+const priced = (price: PriceTag | null) => price === null ? 'price unknown' : `${euros(price.amount)}${PER[price.per]}`;
 const quoted = (price: QuotedMoney) => price.amount === null ? 'price unavailable'
   : `${euros(price.amount)}${price.basis === 'unit' ? ' each' : price.basis === 'line' ? ' line total' : ''}`;
 const numbered = (lines: string[]) => lines.map((line, index) => `${index + 1}. ${line}`).join('\n');
@@ -36,8 +50,7 @@ function response(data: unknown, text: string, status: Status = 'success'): Call
 }
 function errorResult(error: ToolError, mutation?: MutationSummary): CallToolResult {
   const unknown = mutation?.outcome === 'unknown';
-  const publicError = { ...error, message: error.code === 'not_authenticated' && !unknown ? NOT_LOGGED_IN : error.message,
-    ...(unknown ? { retryable: false } : {}) };
+  const publicError = { ...error, ...(unknown ? { retryable: false } : {}) };
   const note = unknown ? '\nThe cart may have changed. Call get_cart before making another change; do not repeat this request automatically.'
     : mutation ? '\nThe cart was not changed.' : '';
   return { isError: true, content: [{ type: 'text', text: `Error (${publicError.code}): ${publicError.message}${note}` }],
@@ -45,9 +58,9 @@ function errorResult(error: ToolError, mutation?: MutationSummary): CallToolResu
 }
 
 export function formatProductSearchResults(products: SearchResult['page']['items']): string {
-  return numbered(products.map(product => `${product.name}${product.favorite ? ' ⭐ favorite' : ''} — ${euros(product.price)}` +
-    `${product.unitPriceText ? ` (${product.unitPriceText})` : ''}${product.minimumText ? `, minimum ${product.minimumText}` : ''}` +
-    `\n   productId: ${product.productId}`));
+  return numbered(products.map(product => `${product.name}${product.favorite ? ' ⭐ favorite' : ''} — ${priced(product.price)}` +
+    `${product.secondaryPrice ? ` (${priced(product.secondaryPrice)})` : ''}${product.packageText ? `, pack ${product.packageText}` : ''}` +
+    `${product.minimumText ? `, minimum ${product.minimumText}` : ''}\n   productId: ${product.productId}`));
 }
 function formatSaleRules(rules: ProductSaleRules): string {
   const bounds = [rules.minimum && `minimum ${amount(rules.minimum)}`, rules.maximum && `maximum ${amount(rules.maximum)}`,
@@ -56,7 +69,7 @@ function formatSaleRules(rules: ProductSaleRules): string {
 }
 function formatProduct(product: ProductDetails): string {
   return [`${product.name}`, `productId: ${product.productId}`,
-    `Price: ${quoted(product.price)}${product.unitPriceText ? ` (${product.unitPriceText})` : ''}`,
+    `Price: ${priced(product.price)}${product.secondaryPrice ? ` (${priced(product.secondaryPrice)})` : ''}`,
     `Availability: ${product.availability}`,
     product.saleRules.status === 'available' ? `Sale rules: ${formatSaleRules(product.saleRules.rules)}`
       : `Sale rules unavailable: ${product.saleRules.error.message}`, `URL: ${product.url}`].join('\n');
@@ -85,13 +98,20 @@ function mutationText(value: Extract<CartMutationResult, { outcome: 'confirmed' 
 
 export class ShoppingHandlers {
   constructor(private readonly services: ShoppingServices, private readonly update: UpdateStatus) {}
+  /** An error result; sign-in failures before any cart write get guidance for fixing them. */
+  private async failed(error: ToolError, mutation?: MutationSummary): Promise<CallToolResult> {
+    if (error.code !== 'not_authenticated' || mutation?.outcome === 'unknown') return errorResult(error, mutation);
+    const status = await this.services.session.getStatus?.().catch(() => undefined);
+    const configured = status ? status.credentials.hasEmail === true && status.credentials.hasPassword === true : null;
+    return errorResult({ ...error, message: signInHelp(status?.credentials.hasEmail === null ? null : configured) }, mutation);
+  }
   private recover<T>(operation: () => Promise<Result<T, ToolError>>) {
     return withAuthenticationRecovery(operation, () => this.services.session.refreshAuthentication());
   }
 
   async searchProducts(query: string, limit: number): Promise<CallToolResult> {
     const result = await this.services.catalog.searchProducts(query, limit);
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const { page, scanned, favorites } = result.value;
     const partial = page.completeness === 'partial';
     const text = page.items.length
@@ -99,23 +119,23 @@ export class ShoppingHandlers {
       : `No products found for "${query}".`;
     return response({ products: page.items, scanned, returned: page.items.length, favoritesLoaded: favorites.length, completeness: page.completeness,
       failures: page.failures, nextCursor: page.nextCursor },
-    text + (partial ? '\n\nPartial results: some result pages could not be read.' : ''), partial ? 'partial' : page.items.length ? 'success' : 'empty');
+    text + (partial ? `\n\nPartial results: ${page.failures.length} problem(s) reading results; see failures.` : ''), partial ? 'partial' : page.items.length ? 'success' : 'empty');
   }
 
   async getProduct(reference: string): Promise<CallToolResult> {
     const result = await this.services.catalog.getProduct(reference);
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const product = result.value;
-    const partial = product.saleRules.status === 'unavailable' || product.price.amount === null || product.availability === 'unknown';
+    const partial = product.saleRules.status === 'unavailable' || product.price === null || product.availability === 'unknown';
     return response(product, formatProduct(product), partial ? 'partial' : 'success');
   }
 
   async listFavorites(refresh: boolean): Promise<CallToolResult> {
     const result = await this.recover(() => refresh ? this.services.favorites.refreshFavorites() : this.services.favorites.listFavorites());
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const { favorites, source, freshness } = result.value;
     const header = `${favorites.length} favorites (${source === 'website' ? 'fetched from the website' : `cached ${result.value.fetchedAt}`}):`;
-    const list = numbered(favorites.map(item => `${item.name} — ${euros(item.price)}\n   productId: ${item.productId}`));
+    const list = numbered(favorites.map(item => `${item.name} — ${priced(item.price)}\n   productId: ${item.productId}`));
     return response(favoritesData(result.value), (favorites.length ? `${header}\n\n${list}` : 'No favorites saved.') +
       (freshness === 'stale' ? '\n\nThis snapshot is more than 24 hours old. Call list_favorites with refresh: true to update it.' : ''),
     favorites.length ? 'success' : 'empty');
@@ -123,7 +143,7 @@ export class ShoppingHandlers {
 
   async getCart(): Promise<CallToolResult> {
     const result = await this.recover(() => this.services.cart.getCart());
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const cart = result.value;
     if (!cart.items.length) return response(cart, 'The cart is empty.', 'empty');
     const list = numbered(cart.items.map(item => `${item.name} — ${observed(item.quantity)} × ${quoted(item.price)}` +
@@ -132,11 +152,11 @@ export class ShoppingHandlers {
       `\nCheckout happens on the website: ${CHECKOUT_URL}`);
   }
 
-  private mutation(result: MutationResult, operation: 'add' | 'set' | 'remove'): CallToolResult {
-    if (!result.ok) return errorResult(result.error, { outcome: 'not_applied' });
+  private async mutation(result: MutationResult, operation: 'add' | 'set' | 'remove'): Promise<CallToolResult> {
+    if (!result.ok) return this.failed(result.error, { outcome: 'not_applied' });
     const value = result.value;
     if (value.outcome === 'confirmed') return response(value, mutationText(value, operation));
-    return errorResult(value.error, value.outcome === 'unknown' ? { outcome: 'unknown', recovery: value.recovery } : { outcome: 'not_applied' });
+    return this.failed(value.error, value.outcome === 'unknown' ? { outcome: 'unknown', recovery: value.recovery } : { outcome: 'not_applied' });
   }
   async addCartItem(reference: string, quantity: number, cartItemId?: string): Promise<CallToolResult> {
     return this.mutation(await this.recover(() => this.services.cart.addCartItem(reference, quantity, cartItemId)), 'add');
@@ -150,7 +170,7 @@ export class ShoppingHandlers {
 
   async listOrders(limit: number, options: OrderListOptions): Promise<CallToolResult> {
     const result = await this.recover(() => this.services.orders.listOrders(limit, options));
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const page = result.value;
     const partial = page.completeness === 'partial';
     const list = numbered(page.items.map(order => `${orderHeading(order)}\n${formatOrderLines(order)}`));
@@ -164,7 +184,7 @@ export class ShoppingHandlers {
 
   async getOrder(orderId: string): Promise<CallToolResult> {
     const result = await this.recover(() => this.services.orders.getOrder(orderId));
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const order = result.value;
     const lines = order.lines.status === 'available' ? order.lines.items : [];
     const unknownQuantityLines = lines.filter(line => line.quantity.status === 'unknown').length;
@@ -175,7 +195,7 @@ export class ShoppingHandlers {
 
   async listFrequentlyBoughtProducts(orderLimit: number, limit: number): Promise<CallToolResult> {
     const result = await this.recover(() => this.services.history.listFrequentlyBoughtProducts(orderLimit));
-    if (!result.ok) return errorResult(result.error);
+    if (!result.ok) return this.failed(result.error);
     const scan = result.value;
     if (!scan.succeeded && (scan.failed || scan.unscanned)) {
       const unavailable = errorResult(failure('order_details_unavailable', 'No order details could be read. See scan.failures.').error);
@@ -220,8 +240,8 @@ export function registerShoppingTools(services: ShoppingServices, update: Update
   }
   return [
     tool('search_products', 'Search products',
-      'Search the Continente.pt catalogue. No login needed. Results show price, unit price and productId; products in your saved favorites rank first. ' +
-      'Reads at most five result pages, so completeness may be "unknown" for broad queries.',
+      'Search the Continente.pt catalogue. No login needed. Results keep the website\'s relevance order, with products from your saved favorites first, and show ' +
+      'each price with what it is for (per item, piece, kg or litre), the pack size and productId. Reads at most five result pages, so completeness may be "unknown" for broad queries.',
       contracts.SearchInput, contracts.SearchOutput, READ, args => handlers.searchProducts(args.query, args.limit)),
     tool('get_product', 'Get product',
       'Get one product by productId: price, availability and sale rules (sale unit, minimum, maximum and step). ' +

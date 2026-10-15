@@ -6,8 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Searching for produce, meat and other products priced per kilogram failed with "Invalid money amount". Prices now record what they are for: per item, per piece, per kg or per litre.
+- One unreadable search result no longer fails the whole search; the other results are returned as a partial result, and the unreadable one is described.
+- Search results keep the website's relevance order. Products whose names merely resembled a favorite no longer jump ahead of better matches; exact favorites still come first.
+- Favorites priced per kilogram are read correctly, and an unrecognised favorite price is reported as unknown instead of failing the refresh.
+
 ### Changed
 
+- **Breaking:** catalogue prices (`price` in search, favorites and `get_product`) are now `{ amount, per }`. `unitPriceText` is replaced by `secondaryPrice`, and the search field `similarity` is removed. Saved favorites are fetched again once after updating.
+- Search results include `packageText`, the pack size as shown on the website.
+- Sign-in errors say whether no credentials are configured or Continente did not accept them, with the next step for each case. The instructions present the `basket-planner` prompt as optional, for clients that support prompts.
 - Browser engine updated to Playwright 1.64 (Chrome 156). After updating, the new Chromium downloads automatically on first use (about 150 MB, once).
 
 ## [0.4.0] - 2026-10-15

@@ -8,7 +8,7 @@ const failure = { code: 'upstream_unavailable', message: 'Unavailable', retryabl
 const quantity = { value: 2, unit: 'un' };
 const product = {
   productId: '00123', productSlug: 'milk-00123', name: 'Milk',
-  price: { currency: 'EUR', minorUnits: 120 }, url: 'https://www.continente.pt/produto/milk-00123.html',
+  price: { amount: { currency: 'EUR', minorUnits: 120 }, per: 'item' }, url: 'https://www.continente.pt/produto/milk-00123.html',
 };
 const rules = {
   saleUnit: 'un', storefrontUnit: 'kg', storefrontUnitsPerSaleUnit: 0.2,
@@ -115,14 +115,15 @@ test('page results distinguish valid empty data, partial failure and unknown com
 });
 
 test('cache parsing validates versions, account scope, timestamps and every product', () => {
-  const cache = { schemaVersion: 1, accountScope: 'account-hash', fetchedAt: '2026-10-14T12:00:00Z', favorites: [product] };
+  const cache = { schemaVersion: 2, accountScope: 'account-hash', fetchedAt: '2026-10-14T12:00:00Z', favorites: [product] };
   assert.deepEqual(parseJson(FavoritesCacheSchema, JSON.stringify(cache), 'favorites cache'), { ok: true, value: cache });
   assert.equal(FavoritesCacheSchema.safeParse({ ...cache, favorites: [] }).success, true);
   for (const input of [
-    { ...cache, schemaVersion: 2 }, { ...cache, accountScope: '' },
+    { ...cache, schemaVersion: 1 }, { ...cache, accountScope: '' },
     { ...cache, fetchedAt: 'yesterday' }, { ...cache, fetchedAt: '2026-02-30T12:00:00Z' },
     { ...cache, favorites: [{}] }, { ...cache, favorites: [{ ...product, productId: '999' }] },
-    { ...cache, favorites: [{ ...product, price: 1.20 }] },
+    { ...cache, favorites: [{ ...product, price: 1.20 }] }, { ...cache, favorites: [{ ...product, price: { currency: 'EUR', minorUnits: 120 } }] },
+    { ...cache, favorites: [{ ...product, price: { amount: { currency: 'EUR', minorUnits: 120 }, per: 'dozen' } }] },
     { favorites: [], lastUpdated: cache.fetchedAt },
   ] as const) assert.equal(parseValue(FavoritesCacheSchema, input, 'favorites cache').ok, false);
   assert.equal(parseJson(FavoritesCacheSchema, '{bad json}', 'favorites cache').ok, false);

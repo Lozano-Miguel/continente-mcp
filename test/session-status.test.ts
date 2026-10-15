@@ -50,7 +50,7 @@ test('favorites status reads freshness without refresh, writes, or exposing acco
     async load() { return broken ? fail('cache_unavailable') : { ok: true, value: cache }; }, async save() { throw new Error('must not save'); }
   }, clock, 'private-account', () => {});
   assert.equal((await favorites.getCacheStatus()).state, 'missing');
-  cache = { schemaVersion: 1 as const, accountScope: 'private-account', fetchedAt: clock.now().toISOString(), favorites: [] };
+  cache = { schemaVersion: 2 as const, accountScope: 'private-account', fetchedAt: clock.now().toISOString(), favorites: [] };
   const status = await favorites.getCacheStatus(); assert.equal(status.state, 'fresh'); assert.equal(status.empty, true);
   assert.ok(!JSON.stringify(status).includes('private-account'));
   cache.fetchedAt = '2026-10-12T12:00:00Z'; assert.equal((await favorites.getCacheStatus()).state, 'stale');

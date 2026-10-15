@@ -45,7 +45,7 @@ export function outputSchema<T extends z.ZodType>(data: T, extra: z.ZodRawShape 
   ]), ...extra });
 }
 const integer = z.number().int().nonnegative();
-export const SearchData = z.strictObject({ products: z.array(ProductSchema.safeExtend({ favorite: z.boolean(), similarity: z.number().min(0).max(1) })),
+export const SearchData = z.strictObject({ products: z.array(ProductSchema.safeExtend({ favorite: z.boolean() })),
   scanned: integer, returned: integer, favoritesLoaded: integer, completeness: z.enum(['complete', 'partial', 'unknown']),
   failures: z.array(ToolErrorSchema), nextCursor: z.string().nullable() });
 export const FavoritesData = z.strictObject({ favorites: z.array(FavoriteProductSchema), fetchedAt: z.iso.datetime({ offset: true }), completeness: z.enum(['complete', 'unknown']),

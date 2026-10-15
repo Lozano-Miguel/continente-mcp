@@ -7,7 +7,7 @@ without contacting the website.
 | --- | --- |
 | `browser_unavailable`: Chromium is being downloaded | The first use downloads Chromium (about 150 MB). Wait a minute and try again. |
 | `browser_unavailable`: Chromium could not be downloaded | Check the internet connection, then run `npx -y continentept-mcp install-browser` to see the download output. On Linux, add `--with-deps` to install system libraries. |
-| `not_authenticated` | Check that `get_session_status` reports credentials as configured, then run `continentept-mcp login` to test them. See [configuration](configuration.md). |
+| `not_authenticated` | The message says whether no credentials are configured or Continente did not accept them. Check them in the extension's settings or your configuration, or run `continentept-mcp login --show-browser` to sign in and complete any extra verification. See [configuration](configuration.md). |
 | Sign-in keeps failing | Run `continentept-mcp login --show-browser` to watch the browser and complete any extra verification the website asks for. |
 | Status shows `authentication: unknown` | Nothing has been observed since the server started or since the saved session changed. Any account tool will establish it. |
 | Favorites are stale or missing from search ranking | Call `list_favorites` with `refresh: true`, then search again. |

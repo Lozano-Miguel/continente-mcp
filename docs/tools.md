@@ -50,9 +50,15 @@ calls, for clients that do not pass structured content to the model.
 
 ### Values
 
-- **Money** is `{ "currency": "EUR", "minorUnits": 129 }` (€1.29). An unknown price is `null`.
-  Cart and product prices are `{ amount, basis }`, where `basis` is `unit`, `line` (a line
-  total) or `unknown`.
+- **Money** is `{ "currency": "EUR", "minorUnits": 129 }` (€1.29).
+- **Catalogue prices** (search, favorites, `get_product`) are `{ amount, per }`, saying what the
+  price is for: `item` (one pack or article), `piece` (one unit, often approximate for
+  produce), `kg` or `l`. Produce and meat show their main `price` per kg, with an approximate
+  per-piece `secondaryPrice`; packaged goods show the pack price with a per-kg or per-litre
+  `secondaryPrice`. A price per kg or per litre is not the price of one pack. An unknown or
+  unrecognised price is `null`.
+- **Cart prices** are `{ amount, basis }`, where `basis` is `unit`, `line` (a line total) or
+  `unknown`.
 - **Quantities** are `{ value, unit }` with unit `un`, `kg`, `g`, `l` or `ml`. Quantities read
   from the website are either `{ status: "known", quantity }` or
   `{ status: "unknown", value, rawText, reason }`; an unknown unit is never guessed.
@@ -64,17 +70,25 @@ calls, for clients that do not pass structured content to the model.
 
 ### `search_products`
 
-Searches the public catalogue. Products in your saved favorites rank first (`favorite: true`),
-then products whose names share the most words with a favorite (`similarity`, 0–1); ties
-keep the website's order. Search uses the local favorites snapshot and never signs in to
-refresh it.
+Searches the public catalogue. Results keep the website's order, which reflects relevance to
+the query, except that products in your saved favorites move to the front (`favorite: true`).
+Search uses the local favorites snapshot and never signs in to refresh it.
+
+Each product has `productId`, `productSlug`, `name`, `url`, `price`, `secondaryPrice`,
+`packageText` (the pack size as shown, such as `940 gr`, `2 x 52 gr` or
+`400 gr (peso escorrido 260 gr)`), `minimumText` (a minimum purchase such as `600 gr (3 un)`)
+and `favorite`.
+
+A result the server cannot read does not fail the search. It is skipped, or kept with an
+unknown price when only the price is unreadable, and described in `failures`; the result is
+then `partial`.
 
 `data`: `products`, `scanned`, `returned`, `favoritesLoaded`, `completeness`, `failures`,
 `nextCursor`.
 
 ### `get_product`
 
-Returns `productId`, `productSlug`, `name`, `url`, `price`, `unitPriceText`, `availability`
+Returns `productId`, `productSlug`, `name`, `url`, `price`, `secondaryPrice`, `availability`
 (`available`, `unavailable` or `unknown`) and `saleRules`:
 
 ```json
@@ -189,7 +203,7 @@ credentials, cookies or file paths.
 | `quantity_below_minimum` | The resulting quantity is below the product minimum. |
 | `sale_rules_unknown` | The product's sale rules could not be interpreted safely. |
 | `not_found` | The product, cart line or order does not exist. |
-| `not_authenticated` | Sign-in is required and automatic sign-in failed or is not configured. |
+| `not_authenticated` | Sign-in is required and automatic sign-in failed or is not configured. The message says which, and what to do. |
 | `upstream_unavailable` | The website could not be reached or returned an error. |
 | `invalid_data` | The website returned something the server does not recognise. |
 | `order_details_unavailable` | Order details could not be read. |

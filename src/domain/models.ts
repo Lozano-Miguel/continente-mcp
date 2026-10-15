@@ -1,18 +1,22 @@
 import { z } from 'zod';
 import { ToolErrorSchema } from './errors.js';
 import { CartItemIdSchema, OrderIdSchema, OrderNumberSchema, ProductIdSchema, ProductReferenceSchema } from './identity.js';
-import { MoneySchema, QuotedMoneySchema } from './money.js';
+import { MoneySchema, PriceTagSchema, QuotedMoneySchema } from './money.js';
 import { ObservedQuantitySchema, QuantitySchema, ProductSaleRulesSchema } from './quantity.js';
 
 const productDetails = {
   name: z.string().trim().min(1).max(250),
-  price: MoneySchema.nullable(),
+  /** The main price as displayed; null when absent or unrecognised. */
+  price: PriceTagSchema.nullable(),
   url: z.url(),
 };
 export const FavoriteProductSchema = ProductReferenceSchema.safeExtend(productDetails);
 export type FavoriteProduct = z.infer<typeof FavoriteProductSchema>;
 export const ProductSchema = FavoriteProductSchema.safeExtend({
-  unitPriceText: z.string().nullable(),
+  /** The comparison price shown next to the main one, such as per kg or per piece. */
+  secondaryPrice: PriceTagSchema.nullable(),
+  /** Pack size as displayed, such as `940 gr`, `2 x 52 gr` or `1,2 kg (aprox.)`. */
+  packageText: z.string().nullable(),
   minimumText: z.string().nullable(),
 });
 export type Product = z.infer<typeof ProductSchema>;
@@ -65,7 +69,7 @@ export const PurchaseFrequencySchema = z.strictObject({
 export type PurchaseFrequency = z.infer<typeof PurchaseFrequencySchema>;
 
 export const FavoritesCacheSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   accountScope: z.string().trim().min(1).max(128),
   fetchedAt: z.iso.datetime({ offset: true }),
   favorites: z.array(FavoriteProductSchema),
@@ -74,8 +78,8 @@ export const FavoritesCacheSchema = z.strictObject({
 export type FavoritesCache = z.infer<typeof FavoritesCacheSchema>;
 
 export const ProductDetailsSchema = ProductReferenceSchema.safeExtend({
-  name: productDetails.name, url: productDetails.url, price: QuotedMoneySchema,
-  unitPriceText: z.string().nullable(), availability: z.enum(['available', 'unavailable', 'unknown']),
+  name: productDetails.name, url: productDetails.url, price: PriceTagSchema.nullable(),
+  secondaryPrice: PriceTagSchema.nullable(), availability: z.enum(['available', 'unavailable', 'unknown']),
   saleRules: z.discriminatedUnion('status', [
     z.strictObject({ status: z.literal('available'), rules: ProductSaleRulesSchema }),
     z.strictObject({ status: z.literal('unavailable'), error: ToolErrorSchema }),

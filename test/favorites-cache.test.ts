@@ -12,7 +12,7 @@ import { favoritesScope } from '../src/config.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const cache = (scope = 'account-a'): FavoritesCache => ({ schemaVersion: 1 as const, accountScope: scope, fetchedAt: '2026-10-14T12:00:00.000Z', favorites: [], completeness: 'complete' as const });
+const cache = (scope = 'account-a'): FavoritesCache => ({ schemaVersion: 2 as const, accountScope: scope, fetchedAt: '2026-10-14T12:00:00.000Z', favorites: [], completeness: 'complete' as const });
 async function directory(t: TestContext) { const dir = await mkdtemp(join(tmpdir(), 'favorites-cache-')); t.after(() => rm(dir, { recursive: true, force: true })); return dir; }
 
 test('valid empty caches remain cache reads; stale and future-dated snapshots expose freshness without implicit refresh', async () => {

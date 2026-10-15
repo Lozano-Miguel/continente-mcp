@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import { ProductDetailsSchema, parseMoneyAmount, parseProductReference, parseValue } from '../domain/index.js';
+import { ProductDetailsSchema, parsePriceTag, parseProductReference, parseValue } from '../domain/index.js';
 import type { ProductDetails, ProductId, Result, ToolError } from '../domain/index.js';
 import { success, failure } from '../domain/index.js';
 import { parseSaleRules } from './cart.js';
@@ -23,12 +23,14 @@ export function parseProductDetails(html: string, sourceUrl: string, expectedId:
   });
   const offer = products.length === 1 ? record(products[0]!.offers) : null;
   const availability = typeof offer?.availability === 'string' ? offer.availability.replace(/^http:\/\//, 'https://') : '';
-  const priceText = $('.ct-pdp--prices .pwc-tile--price-primary').first().text().replace(/\s+/g, '').trim();
-  const amount = parseMoneyAmount(priceText);
+  const priceTag = (selector: string) => {
+    const parsed = parsePriceTag($(`.ct-pdp--prices ${selector}`).first().text());
+    return parsed.ok ? parsed.value : null;
+  };
   const product = {
     ...reference.value, name, url,
-    price: { amount: amount.ok ? amount.value : null, basis: rules.ok && rules.value.rules.saleUnit === 'un' && amount.ok && amount.value ? 'unit' : 'unknown' },
-    unitPriceText: $('.ct-pdp--prices .pwc-tile--price-secondary').first().text().replace(/\s+/g, ' ').trim() || null,
+    price: priceTag('.pwc-tile--price-primary'),
+    secondaryPrice: priceTag('.pwc-tile--price-secondary'),
     availability: availability === 'https://schema.org/InStock' ? 'available' : ['https://schema.org/OutOfStock', 'https://schema.org/Discontinued'].includes(availability) ? 'unavailable' : 'unknown',
     saleRules: rules.ok ? { status: 'available', rules: rules.value.rules } : { status: 'unavailable', error: rules.error },
   };

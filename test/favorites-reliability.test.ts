@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 test('favorites refresh preserves the exact last valid snapshot for HTTP, auth, extraction and completeness failures', async () => {
-  const original: FavoritesCache = { schemaVersion: 1 as const, accountScope: 'test', fetchedAt: '2026-10-14T00:00:00Z', favorites: valueOf(parseFavoritesPages([fixture('favorites')])) };
+  const original: FavoritesCache = { schemaVersion: 2 as const, accountScope: 'test', fetchedAt: '2026-10-14T00:00:00Z', favorites: valueOf(parseFavoritesPages([fixture('favorites')])) };
   let saved = original; let saves = 0;
   const store: FavoritesStore = { async load() { return ok(saved); }, async save(value) { saves++; saved = value; return ok(); } };
   const client: FavoritesGateway = { async fetchFavorites() { return fail(); } };
@@ -37,17 +37,16 @@ test('favorite grid membership excludes recommendations and accepts only proven 
   for (const html of ['<div class="favorites-list"></div>', '<div class="favorites-list"><div class="favorite-grid"></div></div>',
     fixture('favorites-empty').replace('[]', '["123"]')] as const) assert.equal(parseFavoritesPages([html]).ok, false);
 });
-test('exact favorites always rank above similar names; ties keep the site order and only exact matches are badged', () => {
-  const template = present(valueOf(parseProductSearchPage(fixture('catalog')))[0]);
+test('exact favorites come first; similar names do not reorder the website relevance order', () => {
+  const template = present(valueOf(parseProductSearchPage(fixture('catalog'))).products[0]);
   const exact = { ...template, productId: ProductIdSchema.parse('00123'), name: 'Renamed item' };
   const fuzzy = { ...template, productId: ProductIdSchema.parse('999'), name: 'Milk whole fresh dairy' };
   for (const reference of ['00123', 'leite-00123', 'leite-00123.html'] as const) {
     const saved = { ...template, ...valueOf(parseProductReference(reference)), name: 'Old favorite name' };
     const favorites = [saved, ...['Milk', 'whole', 'fresh', 'dairy'].map((name, i) => ({ ...template, productId: ProductIdSchema.parse(String(i + 1)), name }))];
-    const ranked = rankProductsByFavorites([fuzzy, exact, { ...fuzzy, productId: ProductIdSchema.parse('998') }], favorites);
-    assert.deepEqual(ranked.map(p => p.productId), ['00123', '999', '998']);
+    const ranked = rankProductsByFavorites([{ ...fuzzy, productId: ProductIdSchema.parse('998') }, fuzzy, exact], favorites);
+    assert.deepEqual(ranked.map(p => p.productId), ['00123', '998', '999']);
     assert.equal(present(ranked[0]).favorite, true); assert.equal(present(ranked[1]).favorite, false);
-    assert.ok(present(ranked[1]).similarity > present(ranked[0]).similarity);
     const output = formatProductSearchResults(ranked);
     assert.match(output, /Renamed item ⭐ favorite/); assert.doesNotMatch(output, /Milk whole fresh dairy ⭐/);
   }

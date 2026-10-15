@@ -1,6 +1,6 @@
 import { load } from 'cheerio';
-import { FavoriteProductSchema, ProductSchema, parseMoneyAmount, parseProductReference, parseValue } from '../domain/index.js';
-import type { FavoriteProduct, Product, Result, ToolError } from '../domain/index.js';
+import { FavoriteProductSchema, ProductSchema, parsePriceTag, parseProductReference, parseValue } from '../domain/index.js';
+import type { FavoriteProduct, PriceTag, Product, Result, ToolError } from '../domain/index.js';
 import { failure, success } from '../domain/index.js';
 
 export const STOREFRONT_ORIGIN = 'https://www.continente.pt';
@@ -17,6 +17,7 @@ export function productReferenceFromUrl(href: string) {
   return parsed.ok ? parsed : parseProductReference(slug?.match(/-(\d+)(?:-master)?$/)?.[1]);
 }
 
+const PRICE_IN_LABEL = /\d+[,.]\d+\s*€(?:\s*\/\s*[a-z]+)?/gi;
 const SEARCH_EMPTY = '.search-noresults-wrapper, .search-no-results, [data-search-empty]';
 const PRODUCT_LINK = 'a[href*="/produto/"]';
 
@@ -25,30 +26,49 @@ function minimumLabel(label: string): string | null {
   const [caption, ...rest] = label.split('=');
   return /m[ií]nim/i.test(caption ?? '') && rest.length ? text(rest.join('=')) || null : null;
 }
+/** Pack size from labels such as "emb. 940 gr" or "emb. 2 x 52 gr". */
+function packageLabel(label: string): string | null {
+  return text(/^emb\.\s*(.+)$/i.exec(text(label))?.[1] ?? '') || null;
+}
+/** An unrecognised price is reported, not fatal: the product stays usable with an unknown price. */
+function priceOrNull(label: string): { price: PriceTag | null; recognised: boolean } {
+  const parsed = parsePriceTag(label);
+  return parsed.ok ? { price: parsed.value, recognised: true } : { price: null, recognised: false };
+}
 
-export function parseProductSearchPage(html: string): Result<Product[], ToolError> {
+export interface SearchPage {
+  products: Product[];
+  /** One entry per result that was skipped or kept with missing data. */
+  problems: ToolError[];
+}
+
+/** Parse one results page. A bad card is reported in `problems` instead of failing the page. */
+export function parseProductSearchPage(html: string): Result<SearchPage, ToolError> {
   const $ = load(html);
-  if ($(SEARCH_EMPTY).length) return success([]);
+  if ($(SEARCH_EMPTY).length) return success({ products: [], problems: [] });
   const tiles = $($('.search-results-grid').length ? '.search-results-grid .ct-inner-tile-wrap' : '.ct-inner-tile-wrap').toArray();
   if (!tiles.length) return failure('invalid_data', 'The search results page was not recognised');
   const products: Product[] = [];
-  for (const tile of tiles) {
+  const problems: ToolError[] = [];
+  const problem = (message: string) => problems.push(failure('invalid_data', message).error);
+  tiles.forEach((tile, index) => {
     const card = $(tile);
+    const position = `Search result ${index + 1}`;
     const links = card.find(PRODUCT_LINK).toArray().map(link => ({ href: $(link).attr('href'), label: text($(link).text()) }));
     const href = links[0]?.href;
     const name = links.map(link => link.label).find(Boolean);
-    if (!href || !name) return failure('invalid_data', 'A search result was not recognised');
-    const reference = productReferenceFromUrl(href);
-    if (!reference.ok) return reference;
-    const price = parseMoneyAmount(text(card.find('.pwc-tile--price-primary').first().text()) || null);
-    if (!price.ok) return price;
-    const product = parseValue(ProductSchema, { ...reference.value, name, price: price.value, url: storefrontUrl(href),
-      unitPriceText: text(card.find('.pwc-tile--price-secondary').first().text()) || null,
-      minimumText: minimumLabel(card.find('.pwc-tile--quantity').first().text()) }, 'product');
-    if (!product.ok) return product;
-    products.push(product.value);
-  }
-  return success(uniqueProducts(products));
+    const reference = href ? productReferenceFromUrl(href) : null;
+    if (!href || !name || !reference?.ok) { problem(`${position} was not recognised and was skipped.`); return; }
+    const main = priceOrNull(text(card.find('.pwc-tile--price-primary').first().text()));
+    const secondary = priceOrNull(text(card.find('.pwc-tile--price-secondary').first().text()));
+    if (!main.recognised) problem(`${position} (product ${reference.value.productId}) has a price in an unrecognised format; its price is unknown.`);
+    const quantity = card.find('.pwc-tile--quantity').first().text();
+    const product = parseValue(ProductSchema, { ...reference.value, name, url: storefrontUrl(href), price: main.price,
+      secondaryPrice: secondary.price, packageText: packageLabel(quantity), minimumText: minimumLabel(quantity) }, 'product');
+    if (product.ok) products.push(product.value); else problem(`${position} (product ${reference.value.productId}) was not recognised and was skipped.`);
+  });
+  if (!products.length && problems.length) return failure('invalid_data', 'No search result on the page could be recognised');
+  return success({ products: uniqueProducts(products), problems });
 }
 
 export function parseFavoritesPageData(html: string): Result<{ items: FavoriteProduct[]; expectedIds: string[]; nextCursor: string | null }, ToolError> {
@@ -69,14 +89,13 @@ export function parseFavoritesPageData(html: string): Result<{ items: FavoritePr
     const anchor = card.find('a[href*="/produto/"]').filter((_, element) => text($(element).text()).length > 0).first();
     const label = text(anchor.text());
     const href = anchor.attr('href') ?? '';
-    const name = label.replace(/\d+[,.]\d+\s*€/g, '').trim();
+    const name = label.replace(PRICE_IN_LABEL, '').trim();
     if (!name) { error = failure('invalid_data', 'A favorite product was not recognised').error; return; }
     const ref = productReferenceFromUrl(href);
-    const rawPrice = text(card.find('.pwc-tile--price-primary').first().text()) || label.match(/(\d+[,.]\d+\s*€)/)?.[1];
-    const price = parseMoneyAmount(rawPrice);
+    const rawPrice = text(card.find('.pwc-tile--price-primary').first().text()) || label.match(PRICE_IN_LABEL)?.[0] || '';
     if (!ref.ok) { error = ref.error; return; }
-    if (!price.ok) { error = price.error; return; }
-    const result = parseValue(FavoriteProductSchema, { ...ref.value, name, price: price.value, url: storefrontUrl(href) }, 'favorite');
+    // Favorites must be complete, but an unrecognised price only makes that price unknown.
+    const result = parseValue(FavoriteProductSchema, { ...ref.value, name, price: priceOrNull(rawPrice).price, url: storefrontUrl(href) }, 'favorite');
     if (result.ok) products.push(result.value); else error = result.error;
   });
   if (error) return { ok: false, error };
@@ -119,29 +138,18 @@ export function uniqueProducts<T extends FavoriteProduct>(products: T[]): T[] {
   return products.filter(product => { if (seen.has(product.productId)) return false; seen.add(product.productId); return true; });
 }
 export interface RankedProduct extends Product {
-  /** The exact product is in the saved favorites. */
+  /** This exact product is in the saved favorites. */
   favorite: boolean;
-  /** Highest word overlap (0–1) between this name and a favorite's name. */
-  similarity: number;
 }
-const words = (name: string) => new Set(name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  .split(/[^a-z0-9]+/).filter(word => word.length > 1));
-function overlap(a: Set<string>, b: Set<string>): number {
-  let shared = 0;
-  for (const word of a) if (b.has(word)) shared++;
-  const union = a.size + b.size - shared;
-  return union ? shared / union : 0;
-}
-/** Favorites first, then names most similar to a favorite; otherwise keep the site's order. */
+/**
+ * The website orders results by relevance to the query; keep that order and only move exact
+ * favorites to the front. Name similarity to favorites is not used: shared words such as a
+ * brand name would pull unrelated products above real matches.
+ */
 export function rankProductsByFavorites(products: Product[], favorites: FavoriteProduct[]): RankedProduct[] {
   const favoriteIds = new Set(favorites.map(product => product.productId));
-  const favoriteNames = favorites.map(product => words(product.name));
-  return products.map((product, position) => {
-    const name = words(product.name);
-    const similarity = Math.round(Math.max(0, ...favoriteNames.map(favorite => overlap(name, favorite))) * 100) / 100;
-    return { product: { ...product, favorite: favoriteIds.has(product.productId), similarity }, position };
-  }).sort((a, b) => Number(b.product.favorite) - Number(a.product.favorite) || b.product.similarity - a.product.similarity || a.position - b.position)
-    .map(entry => entry.product);
+  const ranked = products.map(product => ({ ...product, favorite: favoriteIds.has(product.productId) }));
+  return [...ranked.filter(product => product.favorite), ...ranked.filter(product => !product.favorite)];
 }
 export function parseSearchPagination(html: string): Result<{ url: string; start: number; size: number } | null, ToolError> {
   const actions = load(html)('[data-url*="Search-UpdateGrid"]');

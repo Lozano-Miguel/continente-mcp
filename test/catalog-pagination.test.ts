@@ -30,7 +30,7 @@ test('search scans enough explicit source pages for the limit regardless of cach
     const result = valueOf((await service.searchProducts('milk', 4)));
     assert.equal(result.scanned, 5); assert.equal(result.page.items.length, 4); assert.equal(result.page.completeness, 'complete');
     assert.equal(result.page.nextCursor, null); assert.equal(source.urls.length, 2);
-    assert.equal(present(present(result.page.items[0]).price).minorUnits, 129);
+    assert.equal(present(present(result.page.items[0]).price).amount.minorUnits, 129);
   }
 });
 test('search stops at requested limit and returns only a real remaining cursor; later failures retain successful products', async () => {
@@ -49,7 +49,7 @@ test('search stops at requested limit and returns only a real remaining cursor; 
   }
 });
 test('search empty recognition ignores recommendations and malformed continuations are never guessed', () => {
-  assert.deepEqual(valueOf(parseProductSearchPage('<div class="search-noresults-wrapper"></div>' + searchPage(['1']))), []);
+  assert.deepEqual(valueOf(parseProductSearchPage('<div class="search-noresults-wrapper"></div>' + searchPage(['1']))), { products: [], problems: [] });
   assert.equal(parseProductSearchPage('<main>unrecognized</main>').ok, false);
   for (const action of ['/Search-UpdateGrid?sz=2', '/Search-UpdateGrid?start=2&sz=1.5', '/Search-UpdateGrid?start=2&sz=0',
     '/Cart-RemoveProduct?Search-UpdateGrid&start=2&sz=2', 'https://other.invalid/Search-UpdateGrid?start=2&sz=2'] as const) {
@@ -69,7 +69,7 @@ test('favorites continuation failures, loops, missing products and mutation URLs
     let first = favoritePage(['1'], ['1', '2'], 1);
     if (mode === 'write-url') first = first.replace('/conta/lista-produtos/?list=favorites&amp;start=1', '/Cart-RemoveProduct?uuid=secret');
     const source = site(first, [mode === 'failure' ? new Error('timeout') : mode === 'loop' ? first : favoritePage([], ['1', '2'])]);
-    let saves = 0; const previous: FavoritesCache = { schemaVersion: 1, accountScope: 'test', fetchedAt: '2026-10-14T12:00:00Z', favorites: valueOf(parseFavoritesPages([fixture('favorites')])) };
+    let saves = 0; const previous: FavoritesCache = { schemaVersion: 2, accountScope: 'test', fetchedAt: '2026-10-14T12:00:00Z', favorites: valueOf(parseFavoritesPages([fixture('favorites')])) };
     const service = new FavoritesService(new FavoritesClient(double<StorefrontClient>(source)), { async load() { return ok(previous); }, async save() { saves++; return ok(); } },
       { now: () => new Date() }, 'test', () => {});
     assert.equal((await service.refreshFavorites()).ok, false); assert.equal(saves, 0);

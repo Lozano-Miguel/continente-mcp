@@ -13,7 +13,7 @@ const url = 'https://www.continente.pt/produto/leite-00123.html';
 test('product detail retains stable identity, bounded sale rules and explicit price basis', () => {
   const result = parseProductDetails(fixture('product'), url, ProductIdSchema.parse('00123')); assert.equal(result.ok, true);
   const product = result.value; assert.equal(product.productId, '00123'); assert.equal(product.productSlug, 'leite-00123');
-  assert.equal(present(product.price.amount).minorUnits, 129); assert.equal(product.price.basis, 'unit');
+  assert.deepEqual(product.price, { amount: { currency: 'EUR', minorUnits: 129 }, per: 'item' });
   assert.equal(product.availability, 'available'); assert.deepEqual(having(product.saleRules, 'rules').rules.maximum, { value: 10, unit: 'un' });
   assert.equal(having(product.saleRules, 'rules').rules.storefrontUnitsPerSaleUnit, 1);
 });
@@ -22,7 +22,7 @@ test('product detail fails closed on changed identity and never invents missing 
   assert.equal(errorOf(parseProductDetails('<main>Changed</main>', url, ProductIdSchema.parse('00123'))).code, 'invalid_data');
   const html = '<h1 class="product-name">Leite</h1><input name="productID" value="00123"><aside><span class="pwc-tile--price-primary">9,99€</span></aside>';
   const product = valueOf(parseProductDetails(html, url, ProductIdSchema.parse('00123')));
-  assert.deepEqual(product.price, { amount: null, basis: 'unknown' }); assert.equal(product.availability, 'unknown');
+  assert.equal(product.price, null); assert.equal(product.availability, 'unknown');
   assert.equal(product.saleRules.status, 'unavailable');
   const unavailable = fixture('product').replace('InStock', 'OutOfStock').replace('"primaryunit":"un"', '"primaryunit":"unknown"');
   assert.equal(valueOf(parseProductDetails(unavailable, url, ProductIdSchema.parse('00123'))).availability, 'unavailable');
