@@ -1,0 +1,63 @@
+name: Site check
+
+# Weekly check that the live Continente.pt website still parses: signed-out searches, prices per
+# kg, pagination and a product page. Opens an issue when it breaks and closes it once it passes.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.repository == 'andredelgado/continente-mcp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run build
+      - name: Download Chromium
+        run: node dist/cli.js install-browser --with-deps
+      - name: Check the live website
+        id: check
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node build/tools/site-check.js 2>&1 | tee site-check.txt
+      - name: Report the result in an issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label site-check --state open --json number --jq '.[0].number // empty')
+          if [ "$OUTCOME" = success ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment "The weekly site check passes again: $RUN_URL"
+            fi
+            exit 0
+          fi
+          summary=$(grep -E '^(PASS|FAIL)|check\(s\) failed' site-check.txt || tail -n 30 site-check.txt)
+          body=$(printf 'The site check against continente.pt failed on %s.\n\n```\n%s\n```\n\nRun: %s\n' "$(date -u +%Y-%m-%d)" "$summary" "$RUN_URL")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Website compatibility check failed" --label site-check --body "$body"
+          fi
+          exit 1

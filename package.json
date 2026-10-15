@@ -64,7 +64,8 @@
     "test:browser": "npm run build && tsc -p tsconfig.tests.json && node build/tools/run-tests.js --browser",
     "test:package": "npm run build:tools && node build/tools/package-smoke.js",
     "prepack": "npm run build",
-    "build:bundle": "npm run build && node build/tools/build-bundle.js"
+    "build:bundle": "npm run build && node build/tools/build-bundle.js",
+    "check:site": "npm run build && node build/tools/site-check.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

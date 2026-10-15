@@ -21,9 +21,14 @@ npm run test:browser # real Chromium against local fixtures only
 npm run test:package # packs, installs and starts the published tarball
 npm audit --omit=dev
 npm run build:bundle # builds the Claude Desktop extension, build/continente-mcp.mcpb
+npm run check:site   # signed-out checks against the live website (public pages only)
 ```
 
 CI runs all of these on Linux (Node 22 and 24) and on macOS and Windows (Node 24).
+
+A scheduled workflow runs `check:site` every Monday. When the website changes in a way the
+parsers no longer understand, it opens an issue labelled `site-check`, and closes it once the
+check passes again. Start it by hand from the Actions tab after a parser change.
 
 Tests never touch a real account. Browser tests serve every request from local fixtures and
 block anything else. Fixtures in `test/fixtures/` are small synthetic pages that use the
