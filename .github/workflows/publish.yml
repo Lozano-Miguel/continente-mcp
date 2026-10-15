@@ -30,6 +30,8 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
+      # Trusted publishing (OIDC, no token) needs npm 11.5.1 or newer.
+      - run: npm install --global npm@11
       - run: npm ci
       - name: Check the tag matches package.json
         env:
@@ -43,6 +45,3 @@ jobs:
           fi
       - name: Publish to npm
         run: npm publish --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
-        env:
-          # Leave NPM_TOKEN unset once npm trusted publishing is configured for this workflow.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
