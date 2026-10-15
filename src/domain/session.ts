@@ -12,3 +12,7 @@ export const FavoritesStatusSchema = z.strictObject({
   expiresAt: z.iso.datetime({ offset: true }).nullable(), empty: z.boolean().nullable(),
 });
 export type FavoritesStatus = z.infer<typeof FavoritesStatusSchema>;
+export const UpdateStatusSchema = z.strictObject({
+  currentVersion: z.string().nullable(), latestVersion: z.string().nullable(), available: z.boolean(),
+});
+export type UpdateStatus = z.infer<typeof UpdateStatusSchema>;

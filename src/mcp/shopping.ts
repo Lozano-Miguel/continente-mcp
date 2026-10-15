@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolHandler } from './server.js';
 import type { SessionService, MutationResult } from '../ports.js';
-import type { CartMutationResult, Money, ObservedQuantity, Order, ProductDetails, ProductSaleRules, Quantity, QuotedMoney, Result, ToolError } from '../domain/index.js';
+import type { UpdateStatus, CartMutationResult, Money, ObservedQuantity, Order, ProductDetails, ProductSaleRules, Quantity, QuotedMoney, Result, ToolError } from '../domain/index.js';
 import { failure } from '../domain/index.js';
 import * as contracts from './contracts.js';
 import { withAuthenticationRecovery } from '../services/recovery.js';
@@ -84,7 +84,7 @@ function mutationText(value: Extract<CartMutationResult, { outcome: 'confirmed' 
 }
 
 export class ShoppingHandlers {
-  constructor(private readonly services: ShoppingServices) {}
+  constructor(private readonly services: ShoppingServices, private readonly update: UpdateStatus) {}
   private recover<T>(operation: () => Promise<Result<T, ToolError>>) {
     return withAuthenticationRecovery(operation, () => this.services.session.refreshAuthentication());
   }
@@ -198,8 +198,9 @@ export class ShoppingHandlers {
     const favorites = await this.services.favorites.getCacheStatus();
     const credentials = status.credentials.hasEmail && status.credentials.hasPassword ? 'configured'
       : status.credentials.hasEmail === null ? 'unknown' : 'missing';
-    return response({ ...status, favorites }, `Browser: ${status.browser}. Credentials: ${credentials}. Saved cookies: ${status.savedCookies}. ` +
-      `Last observed login state: ${status.authentication.state}. Favorites snapshot: ${favorites.state}.`);
+    const update = this.update.available ? ` Update available: ${this.update.latestVersion} (running ${this.update.currentVersion}).` : '';
+    return response({ ...status, favorites, update: this.update }, `Browser: ${status.browser}. Credentials: ${credentials}. Saved cookies: ${status.savedCookies}. ` +
+      `Last observed login state: ${status.authentication.state}. Favorites snapshot: ${favorites.state}.${update}`);
   }
 }
 
@@ -208,8 +209,10 @@ const ADD: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idem
 const UPDATE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
 const UNCERTAIN_WRITE = 'If the result has mutation.outcome "unknown", the cart may have changed: call get_cart before any further change and never repeat the request automatically.';
 
-export function registerShoppingTools(services: ShoppingServices): ToolHandler[] {
-  const handlers = new ShoppingHandlers(services);
+const NO_UPDATE_INFO: UpdateStatus = { currentVersion: null, latestVersion: null, available: false };
+
+export function registerShoppingTools(services: ShoppingServices, update: UpdateStatus = NO_UPDATE_INFO): ToolHandler[] {
+  const handlers = new ShoppingHandlers(services, update);
   function tool<T>(name: string, title: string, description: string, inputSchema: z.ZodType<T>, outputSchema: z.ZodType,
     annotations: ToolAnnotations, execute: (args: T) => Promise<CallToolResult>, cartMutation = false): ToolHandler {
     return { definition: { name, title, description, annotations }, inputSchema, outputSchema, cartMutation,

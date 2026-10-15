@@ -15,6 +15,8 @@ import { OrderService, PurchaseHistoryService } from './services/orders.js';
 import { registerShoppingTools } from './mcp/shopping.js';
 import type { ShoppingServices } from './mcp/shopping.js';
 import { SERVER_INSTRUCTIONS, basketPlannerPrompt } from './mcp/guide.js';
+import { updateNotice } from './services/updates.js';
+import type { UpdateStatus } from './domain/index.js';
 
 export const systemClock: Clock = { now: () => new Date() };
 const chromiumInstaller = new ChromiumInstaller(async () => {
@@ -50,9 +52,10 @@ export function createShoppingServices(options: RuntimeOptions = {}): ShoppingSe
     cart: new CartService(options.cartClient ?? new CartClient(site)), orders: new OrderService(ordersClient),
     history: new PurchaseHistoryService(ordersClient) };
 }
-export function createShoppingApplication(options: RuntimeOptions & { version: string; services?: ShoppingServices }) {
+export function createShoppingApplication(options: RuntimeOptions & { version: string; services?: ShoppingServices; update?: UpdateStatus }) {
   const services = options.services ?? createShoppingServices(options);
-  return createApplication({ version: options.version, tools: registerShoppingTools(services),
-    prompts: [basketPlannerPrompt], instructions: SERVER_INSTRUCTIONS,
+  const notice = options.update ? updateNotice(options.update) : null;
+  return createApplication({ version: options.version, tools: registerShoppingTools(services, options.update),
+    prompts: [basketPlannerPrompt], instructions: notice ? `${SERVER_INSTRUCTIONS}\n\n${notice}` : SERVER_INSTRUCTIONS,
     closeResources: () => services.session.shutdown?.() ?? services.session.run(() => services.session.closeBrowserSession()) });
 }

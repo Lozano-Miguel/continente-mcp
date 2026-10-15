@@ -22,6 +22,7 @@ const isolatedEnv = (dir: string) => ({
   HOME: dir,
   USERPROFILE: dir,
   CONTINENTE_CREDENTIALS_FILE: join(dir, 'unreadable-credentials'),
+  CONTINENTE_UPDATE_CHECK: '0',
 });
 
 test('compiled CLI responds through stdio, including npm-style symlinks', async t => {

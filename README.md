@@ -44,10 +44,21 @@ it needs it (about 150 MB, once).
 3. Enter your Continente email and password when asked. Claude Desktop keeps the password
    in its secure settings storage.
 
-That's it. The extension updates when you install a newer `.mcpb`. The server is also listed
+That's it. The server is also listed
 in the [MCP Registry](https://registry.modelcontextprotocol.io) as
 `io.github.andredelgado/continente-mcp`, so clients that browse the registry can find it. To use 1Password instead
 of storing the password in Claude Desktop, use the manual setup below.
+
+### Updates
+
+The server checks npm once a day for a newer release. When there is one, it tells the
+assistant, so Claude can mention it, and `get_session_status` shows it.
+
+- **Extension:** download the new `continente-mcp.mcpb` and open it. Claude Desktop updates the
+  extension in place and keeps your email and password.
+- **npx setups:** using `continentept-mcp@latest` picks up new versions when the client restarts.
+- **Release emails:** on [GitHub](https://github.com/andredelgado/continente-mcp), choose
+  **Watch → Custom → Releases**.
 
 ## Manual setup (any MCP client)
 

@@ -177,7 +177,8 @@ top-level `scan` field.
 Reports local state without opening a browser or contacting the website: `browser`
 (`closed`, `starting`, `ready`), `credentials` (`hasEmail`, `hasPassword`), `savedCookies`
 (`available`, `missing`, `unavailable`), `authentication` (the last observed login state and
-when it was observed) and `favorites` (snapshot state and expiry). It never returns
+when it was observed), `favorites` (snapshot state and expiry) and `update` (`currentVersion`,
+`latestVersion` and whether a newer release is `available`). It never returns
 credentials, cookies or file paths.
 
 ## Error codes
@@ -205,7 +206,8 @@ Invalid arguments and unknown tools are JSON-RPC errors (`-32602`), not tool res
 
 The server sends **instructions** when a client connects: the quantity, cart-change and
 uncertain-outcome rules described above, in a few lines. Clients such as Claude include them
-in the assistant's context automatically.
+in the assistant's context automatically. When a newer release exists, the instructions also
+say so, so the assistant can tell the user.
 
 It also offers one **prompt**, `basket-planner` ("Plan a Continente basket"). It returns the
 full shopping workflow as a user message. Its optional `request` argument, such as

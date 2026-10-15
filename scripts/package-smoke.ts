@@ -30,7 +30,7 @@ try {
   if (process.platform !== 'win32') assert.ok((await stat(join(installed, 'dist/cli.js'))).mode & 0o111);
   const bin = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'continentept-mcp.cmd' : 'continentept-mcp');
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|SYSTEMROOT|WINDIR|PATHEXT)$/i.test(key))),
-    HOME: root, USERPROFILE: root, CONTINENTE_CREDENTIALS_FILE: join(root, 'missing.env'), CONTINENTE_DATA_DIR: join(root, 'state'), CONTINENTE_EMAIL: '', CONTINENTE_PASSWORD: '' };
+    HOME: root, USERPROFILE: root, CONTINENTE_CREDENTIALS_FILE: join(root, 'missing.env'), CONTINENTE_DATA_DIR: join(root, 'state'), CONTINENTE_EMAIL: '', CONTINENTE_PASSWORD: '', CONTINENTE_UPDATE_CHECK: '0' };
   const transport = new StdioClientTransport({ command: bin, env, stderr: 'pipe' });
   const client = new Client({ name: 'installed-package-check', version: '1' });
   try {

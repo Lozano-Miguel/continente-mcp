@@ -14,6 +14,7 @@ manual setups.
 | `CONTINENTE_CREDENTIALS_FILE` | `<data dir>/credentials.env` | Location of the credentials file. Set this in the MCP client configuration. |
 | `CONTINENTE_DATA_DIR` | `~/.continentept-mcp` | Directory for the saved session, the favorites snapshot and, by default, the credentials file. |
 | `CONTINENTE_BROWSER_IDLE_SECONDS` | `300` | Close the browser after this many idle seconds. `0` keeps it open until the server stops. |
+| `CONTINENTE_UPDATE_CHECK` | `1` | Set to `0` to stop the daily check for a newer release on npm. |
 
 On Windows, `~` is `%USERPROFILE%`.
 
@@ -29,7 +30,8 @@ CONTINENTE_PASSWORD=your-password
 
 One `KEY=value` per line. Quotes around a value are removed, `export ` prefixes and `#`
 comment lines are allowed, and nothing is expanded. The file may set `CONTINENTE_EMAIL`,
-`CONTINENTE_PASSWORD` and `CONTINENTE_BROWSER_IDLE_SECONDS`; other keys are ignored. A variable
+`CONTINENTE_PASSWORD`, `CONTINENTE_BROWSER_IDLE_SECONDS` and `CONTINENTE_UPDATE_CHECK`; other keys
+are ignored. A variable
 set in the environment always wins over the file, even when it is empty. See
 [`.env.example`](../.env.example).
 
@@ -107,9 +109,18 @@ complete it in that window; the session is saved once the account is signed in.
 | `session.json` | Website session cookies. Treat it like a password. |
 | `favorites.json` | Favorites snapshot, tied to the configured account and current session. |
 | `favorites.json.bak` | Previous valid favorites snapshot. |
+| `update-check.json` | The latest version seen on npm and when it was checked. |
 
 Files are written atomically and readable only by your user. A new session or a different
 account makes the favorites snapshot stale until it is refreshed. Delete the directory to
 remove everything the server has stored.
+
+## Update check
+
+When the server starts, it asks npm for the latest published version, at most once a day and
+with a short timeout. The request sends nothing about you or your account. If a newer stable
+release exists, the assistant is told about it and `get_session_status` reports it. Nothing is
+downloaded or installed automatically. When offline, the check is skipped silently. Set
+`CONTINENTE_UPDATE_CHECK=0` to turn it off.
 
 One server process serves one account.

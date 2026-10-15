@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MAX_REFERENCE_LENGTH, isProductReference, CartSchema, ProductDetailsSchema, FavoriteProductSchema, OrderSchema, ProductSchema, PurchaseFrequencySchema,
-  ToolErrorSchema, CartMutationResultSchema, CartItemIdSchema, OrderIdSchema, BrowserStatusSchema, FavoritesStatusSchema } from '../domain/index.js';
+  ToolErrorSchema, CartMutationResultSchema, CartItemIdSchema, OrderIdSchema, BrowserStatusSchema, FavoritesStatusSchema, UpdateStatusSchema } from '../domain/index.js';
 
 export const ProductReferenceInput = z.string().min(1).max(MAX_REFERENCE_LENGTH).regex(/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*(?:\.html)?$/)
   .refine(isProductReference, 'Expected a numeric productId or a product slug ending in it')
@@ -63,7 +63,7 @@ export const MutationOutput = outputSchema(ConfirmedMutationData);
 export const OrdersOutput = outputSchema(OrdersData);
 export const SingleOrderOutput = outputSchema(z.strictObject({ order: OrderSchema, unknownQuantityLines: integer }));
 export const FrequencyOutput = outputSchema(FrequencyData, { scan: FrequencyData.optional() });
-export const SessionStatusOutput = outputSchema(BrowserStatusSchema.extend({ favorites: FavoritesStatusSchema }));
+export const SessionStatusOutput = outputSchema(BrowserStatusSchema.extend({ favorites: FavoritesStatusSchema, update: UpdateStatusSchema }));
 
 export const GetProductInput = z.strictObject({ productId: ProductReferenceInput });
 export const ProductDetailsOutput = outputSchema(ProductDetailsSchema);

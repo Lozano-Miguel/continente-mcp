@@ -65,7 +65,8 @@ test('MCP status exposes only allowlisted local facts and read-only annotations'
   assert.equal(result.isError, undefined);
   assert.deepEqual(dataOf(result, sessionData), { browser: 'unknown', credentials: { hasEmail: null, hasPassword: null },
     savedCookies: 'unknown', authentication: { state: 'unknown', checkedAt: null },
-    favorites: { state: 'missing', fetchedAt: null, expiresAt: null, empty: null } });
+    favorites: { state: 'missing', fetchedAt: null, expiresAt: null, empty: null },
+    update: { currentVersion: null, latestVersion: null, available: false } });
   assert.equal(state.reads, 0); assert.equal(state.refreshes, 0); assert.equal(state.writes, 0);
 });
 test('an idle browser closes automatically and reopens on the next operation', async () => {

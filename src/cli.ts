@@ -5,6 +5,8 @@ import { createShoppingApplication } from './runtime.js';
 import { runAutoLogin } from './auto-login.js';
 import { isMainModule } from './main-module.js';
 import { runChromiumInstall } from './session/chromium.js';
+import { checkForUpdate } from './services/updates.js';
+import { loadSettings } from './config.js';
 import type { ContinenteMcpServer } from './mcp/server.js';
 
 const USAGE = `Usage: continentept-mcp [command]
@@ -20,16 +22,19 @@ Options:
   -v, --version     Show the version
 `;
 
-function packageVersion(): string {
+function packageMetadata(): { name: string; version: string } {
   const metadata: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  if (typeof metadata !== 'object' || metadata === null || !('version' in metadata) ||
-    typeof metadata.version !== 'string') throw new Error('Missing package version');
-  return metadata.version;
+  if (typeof metadata !== 'object' || metadata === null || !('version' in metadata) || !('name' in metadata) ||
+    typeof metadata.version !== 'string' || typeof metadata.name !== 'string') throw new Error('Missing package metadata');
+  return { name: metadata.name, version: metadata.version };
 }
 
 export async function startStdioServer(): Promise<ContinenteMcpServer> {
-  const version = packageVersion();
-  const application = createShoppingApplication({ version });
+  const { name, version } = packageMetadata();
+  const settings = loadSettings();
+  const update = await checkForUpdate({ currentVersion: version, packageName: name, dataDir: settings.dataDir, enabled: settings.updateCheck });
+  if (update.available) console.error(`${name} ${update.latestVersion} is available (running ${version}).`);
+  const application = createShoppingApplication({ version, update });
   await connectStdioApplication(application);
   console.error(`continentept-mcp ${version} ready on stdio`);
   return application;
@@ -64,7 +69,7 @@ export async function main(args: string[]): Promise<number> {
       return runChromiumInstall(rest);
     case '-v':
     case '--version':
-      console.log(packageVersion());
+      console.log(packageMetadata().version);
       return 0;
     case '-h':
     case '--help':
