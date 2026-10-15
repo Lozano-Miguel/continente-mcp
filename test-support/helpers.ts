@@ -16,7 +16,7 @@ export const rawCart = (qty = 0, id = '00123') => ({
   resources: { customerAuthenticated: true },
   cart: { items: qty ? [{ id, productName: 'Leite Meio Gordo', quantity: qty, price: { sales: { value: 1.29 } } }] : [], totalProductsValueNumber: 4.25 },
 });
-export interface RawSaleRules { primaryunit: string; secondaryunit: string; primaryToSecondary?: number; hasAlternativeSaleUnit?: boolean; minOrderQuantity?: number; }
+export interface RawSaleRules { primaryunit: string; secondaryunit: string; primaryToSecondary?: number; hasAlternativeSaleUnit?: boolean; minOrderQuantity?: number; maxNumberOfUnitsPerSale?: number; }
 export const unitRules: RawSaleRules = { primaryunit: 'un', secondaryunit: 'kg' };
 export const weightedRules = { primaryunit: 'kg', secondaryunit: 'un', primaryToSecondary: 0.2, hasAlternativeSaleUnit: true, minOrderQuantity: 0.6 };
 export const productForm = (rules = unitRules, action = '/Cart-AddProduct') => `<input name="productID" value="00123-master"><input class="add-to-cart-url" value="${action}"><input name="csrf_token" value="synthetic-token"><div class="ct-tile-quantity-update" data-measure-options='${JSON.stringify(rules)}'></div>`;

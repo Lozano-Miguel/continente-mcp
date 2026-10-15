@@ -50,6 +50,15 @@ test('weighted new item uses minimum sentinel then one absolute update', async (
   assert.equal(present(writes[1]).params.step, '0.2');
   assert.equal(present(writes[1]).params.dimension, 'un');
 });
+test('a weighted maximum in kg limits whole pieces and is enforced before any write', async () => {
+  const limited = { ...weightedRules, maxNumberOfUnitsPerSale: 5 };
+  const { service, writes } = cartScenario({ rules: limited });
+  assert.equal(valueOf(await service.addCartItem('00123', 25)).outcome, 'confirmed');
+  const over = cartScenario({ rules: limited });
+  assert.equal(errorOf(await over.service.addCartItem('00123', 26)).code, 'invalid_input');
+  assert.equal(over.writes.length, 0);
+  assert.equal(present(writes[1]).params.quantity, '5');
+});
 test('weighted existing item uses absolute total and validates minimum against that total', async () => {
   const { service, writes } = cartScenario({ initial: 4, rules: weightedRules });
   const result = await service.addCartItem('00123', 1);
