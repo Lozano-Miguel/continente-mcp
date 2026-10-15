@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
 ### Fixed
 
 - Searching for produce, meat and other products priced per kilogram failed with "Invalid money amount". Prices now record what they are for: per item, per piece, per kg or per litre.
@@ -69,7 +71,8 @@ All notable changes to this project are documented here. The format follows
 - Automatic sign-in from environment variables or a private credentials file, and a `login` command.
 - The `basket-planner` skill for planning a shopping list and updating the basket.
 
-[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/andredelgado/continente-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/andredelgado/continente-mcp/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/andredelgado/continente-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/andredelgado/continente-mcp/compare/v0.2.0...v0.3.0
