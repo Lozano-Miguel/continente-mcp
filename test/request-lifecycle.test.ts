@@ -1,6 +1,6 @@
 import { having, double, toolError, mutationOf, statusOf, dataOf } from '../test-support/assertions.js';
 import type { CookieStore } from '../src/stores/files.js';
-import type { BrowserLauncher, StorefrontSession } from '../src/session/browser.js';
+import type { BrowserLauncher, BrowserLease, StorefrontSession } from '../src/session/browser.js';
 import { present, ok, fail, rawCart, fixture, productForm, ordersPage } from '../test-support/helpers.js';
 import { OrdersData, SearchData } from '../src/mcp/contracts.js';
 import { ProgressNotificationSchema, CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -71,7 +71,7 @@ test('scan progress travels over MCP using the caller progress token', async t =
 test('catalogue cancellation keeps already-read products as partial results', async () => {
   const { services } = injectedServices(); await services.favorites.refreshFavorites(); let reads = 0;
   const catalog = new CatalogClient(double<StorefrontClient>({ async html() { return ok(fixture('catalog')); },
-    session: { async ensureReady() { return { context: { request: { async get() { reads++; return new Promise(() => {}); } } } }; } },
+    session: { async ensureReady() { return double<BrowserLease>({ context: { request: { async get() { reads++; return new Promise<never>(() => {}); } } } }); } },
     io<T>(lease: unknown, operation: () => Promise<T>) { return requestIO(operation); } }));
   services.catalog = new CatalogService(catalog, services.favorites);
   const app = createShoppingApplication({ version: 'test', services });

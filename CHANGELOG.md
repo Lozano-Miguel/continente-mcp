@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Browser engine updated to Playwright 1.64 (Chrome 156). After updating, the new Chromium downloads automatically on first use (about 150 MB, once).
+
 ## [0.4.0] - 2026-10-15
 
 ### Added
