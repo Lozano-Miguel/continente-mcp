@@ -43,5 +43,15 @@ jobs:
             echo "::error::Tag $TAG, package.json $version and package-lock.json $lock must agree."
             exit 1
           fi
+      # Makes re-running a release safe; npm never accepts the same version twice.
+      - name: Skip versions already on npm
+        id: registry
+        run: |
+          spec=$(node -p "const p = require('./package.json'); p.name + '@' + p.version")
+          if [ -n "$(npm view "$spec" version 2>/dev/null)" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$spec is already on npm; nothing to publish."
+          fi
       - name: Publish to npm
+        if: steps.registry.outputs.published != 'true'
         run: npm publish --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
