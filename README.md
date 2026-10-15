@@ -23,8 +23,9 @@ on the website.
   of retrying.
 - **Your account**: favorites, order history and a ranking of the products you buy most.
 - **Runs locally** over stdio. Credentials and cookies stay on your machine.
-- **Bundled skill** ([`basket-planner`](skills/basket-planner/SKILL.md)) that teaches an
-  assistant to plan a shopping list and update the basket.
+- **Built-in guidance.** The server tells the assistant the cart rules as soon as it
+  connects, and offers a `basket-planner` prompt with the full shopping workflow. Nothing
+  extra to install; the same guide also ships as a [skill](skills/basket-planner/SKILL.md).
 
 ## Requirements
 
@@ -110,6 +111,18 @@ A cart change can fail after the request has reached the website, for example on
 In that case the result has `mutation.outcome: "unknown"` and asks the client to call
 `get_cart` before doing anything else. The server never retries such a change on its own,
 and clients should not either: repeating an `add_cart_item` could add the item twice.
+
+### Guidance for the assistant
+
+When a client connects, the server sends short instructions with these cart rules, so the
+assistant follows them without any setup. For planning a shopping list, pick the
+**basket-planner** prompt from your client's prompt or attachment menu, optionally with a
+request such as "weekly basket for two".
+
+The same guide is available as a skill in
+[`skills/basket-planner`](skills/basket-planner/SKILL.md). Clients that support skills, such
+as Claude Desktop (Settings → Capabilities → Skills) or Claude Code (`~/.claude/skills/`),
+then apply it automatically whenever you ask about groceries.
 
 ## Command line
 

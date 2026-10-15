@@ -36,11 +36,13 @@ try {
   try {
     await client.connect(transport); assert.equal(client.getServerVersion()?.version, pkg.version);
     assert.equal((await client.listTools()).tools.length, TOOL_COUNT);
+    assert.match(client.getInstructions() ?? '', /get_cart/);
+    assert.deepEqual((await client.listPrompts()).prompts.map(prompt => prompt.name), ['basket-planner']);
     const result = await client.callTool({ name: 'get_session_status', arguments: {} });
     const status = z.object({ result: z.object({ status: z.literal('success'), data: z.object({ browser: z.literal('closed'), credentials: z.object({ hasEmail: z.literal(false) }) }) }) }).parse(result.structuredContent);
     assert.equal(status.result.data.browser, 'closed');
     assert.equal(status.result.data.credentials.hasEmail, false);
     await assert.rejects(client.callTool({ name: 'search_products', arguments: { query: '' } }));
   } finally { await client.close(); }
-  console.log(`Installed package verified: ${process.platform}, Node ${process.version}, ${archive.files.length} files, ${TOOL_COUNT} tools, npm bin, isolated state.`);
+  console.log(`Installed package verified: ${process.platform}, Node ${process.version}, ${archive.files.length} files, ${TOOL_COUNT} tools, instructions and prompt, npm bin, isolated state.`);
 } finally { await rm(root, { recursive: true, force: true }); }

@@ -1,9 +1,11 @@
 import { ContinenteMcpServer } from './mcp/server.js';
-import type { ToolHandler } from './mcp/server.js';
+import type { PromptHandler, ToolHandler } from './mcp/server.js';
 
 export interface ApplicationOptions {
   readonly version: string;
   readonly tools?: readonly ToolHandler[];
+  readonly prompts?: readonly PromptHandler[];
+  readonly instructions?: string;
   readonly closeResources?: () => Promise<void>;
   readonly requestTimeoutMs?: number;
 }

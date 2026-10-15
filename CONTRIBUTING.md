@@ -32,7 +32,7 @@ same selectors as the live site; they must not contain real customer, order or s
 
 | Path | Responsibility |
 | --- | --- |
-| `src/mcp/` | Tool definitions, schemas, result envelopes and text output |
+| `src/mcp/` | Tool definitions, schemas, result envelopes, text output, server instructions and the prompt |
 | `src/services/` | Shopping rules: search ranking, favorites cache, cart verification, order scans |
 | `src/domain/` | Validated types for identifiers, money, quantities, errors and outcomes |
 | `src/parsers/` | Pure functions that turn website HTML/JSON into domain values |
@@ -55,6 +55,8 @@ protocol messages only.
   unknown rather than defaulting to a plausible value.
 - **Fix at the boundary.** When the website changes, update the parser and its fixture, and
   add a test for the new markup.
+- The `basket-planner` prompt text in `src/mcp/guide.ts` must match the body of
+  `skills/basket-planner/SKILL.md`. Edit both together; a test fails when they differ.
 - Use [Conventional Commits](https://www.conventionalcommits.org/) for pull request titles
   (`fix:`, `feat:`, `docs:`, ...). Pull requests are squash-merged.
 - Note user-facing changes under `Unreleased` in `CHANGELOG.md`. Don't bump the version in feature pull requests.

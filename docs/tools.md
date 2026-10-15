@@ -1,7 +1,8 @@
 # Tool reference
 
-Continente MCP exposes 11 tools. Every tool has a strict input schema (unknown fields are
-rejected), an output schema, a title and the four MCP behaviour annotations.
+Continente MCP exposes 11 tools, server instructions and one prompt. Every tool has a strict
+input schema (unknown fields are rejected), an output schema, a title and the four MCP
+behaviour annotations.
 
 | Tool | Login | Changes the cart | Inputs |
 | --- | --- | --- | --- |
@@ -198,6 +199,17 @@ credentials, cookies or file paths.
 | `internal_error`, `invalid_result` | Unexpected server failure. Details are not exposed. |
 
 Invalid arguments and unknown tools are JSON-RPC errors (`-32602`), not tool results.
+
+## Instructions and prompt
+
+The server sends **instructions** when a client connects: the quantity, cart-change and
+uncertain-outcome rules described above, in a few lines. Clients such as Claude include them
+in the assistant's context automatically.
+
+It also offers one **prompt**, `basket-planner` ("Plan a Continente basket"). It returns the
+full shopping workflow as a user message. Its optional `request` argument, such as
+`weekly basket for two`, is appended to the workflow. The text is the same as the
+[`basket-planner` skill](../skills/basket-planner/SKILL.md).
 
 ## Limits and lifecycle
 

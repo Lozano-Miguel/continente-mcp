@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolRequestSchema, CallToolResultSchema, ListToolsRequestSchema, McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult, GetPromptResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { ExecutionErrorSchema } from './contracts.js';
@@ -14,9 +14,20 @@ export interface ToolHandler {
   readonly cartMutation?: boolean;
   execute(input: unknown): Promise<CallToolResult>;
 }
+/** A prompt template. Every argument is an optional string, as MCP prompt arguments are strings. */
+export interface PromptHandler {
+  readonly name: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly arguments?: Readonly<Record<string, string>>;
+  render(args: Readonly<Record<string, string | undefined>>): GetPromptResult;
+}
 export interface McpServerOptions {
   readonly version: string;
   readonly tools: readonly ToolHandler[];
+  readonly prompts?: readonly PromptHandler[];
+  /** Usage guidance sent to clients when they connect. */
+  readonly instructions?: string;
   readonly closeResources?: () => Promise<void>;
   readonly requestTimeoutMs?: number;
 }
@@ -26,13 +37,24 @@ export class ContinenteMcpServer {
   private cleanup: Promise<void> | undefined;
   private readonly shutdown = new AbortController();
   constructor(private readonly options: McpServerOptions) {
-    this.server = new McpServer({ name: 'continentept-mcp', version: options.version }, { capabilities: { tools: {} } });
+    this.server = new McpServer({ name: 'continentept-mcp', version: options.version },
+      { capabilities: { tools: {} }, ...(options.instructions ? { instructions: options.instructions } : {}) });
     for (const handler of options.tools) {
       if (this.handlers.has(handler.definition.name)) throw new Error(`Duplicate tool: ${handler.definition.name}`);
       this.handlers.set(handler.definition.name, handler);
     }
     this.server.server.onclose = () => { this.shutdown.abort(new RequestStopped('server_closed')); void this.closeResources().catch(() => {}); };
     this.registerTools();
+    this.registerPrompts();
+  }
+  private registerPrompts(): void {
+    for (const prompt of this.options.prompts ?? []) {
+      const argsSchema = Object.fromEntries(Object.entries(prompt.arguments ?? {})
+        .map(([name, description]) => [name, z.string().optional().describe(description)]));
+      this.server.registerPrompt(prompt.name, { ...(prompt.title ? { title: prompt.title } : {}),
+        ...(prompt.description ? { description: prompt.description } : {}), argsSchema },
+      args => prompt.render(args as Record<string, string | undefined>));
+    }
   }
   private registerTools(): void {
     if (!this.handlers.size) this.server.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));

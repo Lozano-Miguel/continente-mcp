@@ -13,6 +13,7 @@ import { CartService } from './services/cart.js';
 import { OrderService, PurchaseHistoryService } from './services/orders.js';
 import { registerShoppingTools } from './mcp/shopping.js';
 import type { ShoppingServices } from './mcp/shopping.js';
+import { SERVER_INSTRUCTIONS, basketPlannerPrompt } from './mcp/guide.js';
 
 export const systemClock: Clock = { now: () => new Date() };
 export const launchBrowser: BrowserLauncher = async options => (await import('playwright')).chromium.launch(options);
@@ -45,5 +46,6 @@ export function createShoppingServices(options: RuntimeOptions = {}): ShoppingSe
 export function createShoppingApplication(options: RuntimeOptions & { version: string; services?: ShoppingServices }) {
   const services = options.services ?? createShoppingServices(options);
   return createApplication({ version: options.version, tools: registerShoppingTools(services),
+    prompts: [basketPlannerPrompt], instructions: SERVER_INSTRUCTIONS,
     closeResources: () => services.session.shutdown?.() ?? services.session.run(() => services.session.closeBrowserSession()) });
 }

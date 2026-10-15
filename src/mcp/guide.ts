@@ -1,0 +1,71 @@
+import type { PromptHandler } from './server.js';
+
+// The basket-planner guide, served as the `basket-planner` prompt. Keep it identical to the body of
+// skills/basket-planner/SKILL.md; a test fails when they differ.
+export const BASKET_PLANNER_GUIDE = `# Basket planner
+
+Turn the user's shopping intent into a product list or a verified basket using the **continentept-mcp** tools. A request for a plan authorizes research only; a request to add, remove or set items authorizes those basket changes. Keep the user's existing choices and constraints. Ask only about choices that change the result, such as an unspecified substitute or whether a quantity means "more" or "in total".
+
+## Choose products and quantities
+
+1. Use \`search_products\` with \`query\` (and \`limit\` when useful). Treat results as candidates: match size, brand, dietary constraints and intended use before choosing. Keep \`productId\` as a string, including leading zeros.
+2. Use \`get_product\` when price, availability or sale rules matter. Quantities are in the returned sale unit. Respect minimum, maximum and step; never assume a weighted product is sold by the kilogram and never silently round a requested amount.
+3. Before changing the basket, read \`get_cart\` for current quantities and line identities. If several lines share a product ID, use the intended line's \`cartItemId\`, or ask the user which line they mean.
+4. Show unresolved choices. Missing prices, availability, quantities or sale rules stay unknown. Money is EUR in integer \`minorUnits\` (129 means €1.29). Keep product prices, basket totals and estimated list costs distinct.
+
+Searches read a bounded number of result pages; respect \`completeness\` and \`failures\` and do not claim a search was exhaustive.
+
+## Change the basket
+
+- \`set_cart_item_quantity({ productId, quantity, cartItemId? })\` makes the basket hold exactly \`quantity\`, adding the product if needed. Zero removes it. Prefer this whenever the user states a desired total; repeating it is safe.
+- \`add_cart_item({ productId, quantity, cartItemId? })\` adds \`quantity\` on top of what is already there (default one sale unit). Use it only for "add more".
+- \`remove_cart_item({ productId, cartItemId? })\` removes a line. An already absent item is confirmed without a write.
+
+If the basket holds two units, "add two more" is \`add_cart_item\` with 2, while "I need two" is \`set_cart_item_quantity\` with 2 (which changes nothing). Process a list one item at a time and read each result before continuing. There is no batch, checkout or payment tool; checkout happens on the website.
+
+## Read outcomes before reporting success
+
+Read \`structuredContent.result\` rather than inferring success from prose.
+
+- \`status: success\`, \`empty\` or \`partial\` carries \`data\`. Report partial-result warnings and unavailable data.
+- A confirmed change has \`data.outcome: "confirmed"\` and \`confirmedQuantity\`, the quantity now in the basket. Report that observed quantity.
+- \`status: error\` carries \`error\`. For basket changes also read \`mutation\`: \`not_applied\` means nothing was submitted or the change was rejected; fix the reported cause before trying again.
+- \`mutation.outcome: "unknown"\` means the change may have happened. Stop dependent basket changes, call \`get_cart\`, and compare with the state before the change. Never repeat the original request just because the response was lost. If the basket state cannot settle the intent, explain the uncertainty and ask the user.
+
+A timeout, cancellation or lost connection during a change is not evidence that the basket stayed the same. Apply the same reconciliation when no structured result arrives.
+
+## Use account context when it helps
+
+For "my usual items", \`list_favorites\` and \`list_frequently_bought_products\` can inform a proposed list. Past purchases are evidence, not permission to buy them again.
+
+\`list_favorites\` returns a local snapshot with \`source\` and \`freshness\`; pass \`refresh: true\` when the user wants the current website list or the snapshot is stale. An empty list is a valid result, and a failed refresh does not mean favorites disappeared.
+
+\`list_orders\` supports \`limit\`, \`includeLines\`, \`detailLimit\` and \`cursor\` (the returned \`nextCursor\`). Use the internal \`orderId\` with \`get_order\`, not the displayed order number. \`list_frequently_bought_products\` has separate \`orderLimit\` and \`limit\`; its scan counts and failures show how representative the ranking is. Never add quantities expressed in different units.
+
+\`get_session_status\` reports local state only; it does not verify that the login still works. Do not include credentials or account details in summaries.
+
+Finish with the chosen or changed items, confirmed quantities and units, and any unresolved choices or failures. Keep planned items separate from changes the server confirmed.
+
+For exact schemas and limits, see the [tool reference](https://github.com/andredelgado/continente-mcp/blob/main/docs/tools.md).`;
+
+/** Sent to every client on connect; the essential rules for working with the cart safely. */
+export const SERVER_INSTRUCTIONS = `Continente MCP shops at Continente.pt for one account. Checkout and payment always happen on the website.
+
+- Quantities are in the product's sale unit. Call get_product before choosing a quantity for weighted or bulk products, and respect its minimum, maximum and step.
+- set_cart_item_quantity sets an exact total (adding the product if needed; 0 removes it). add_cart_item adds on top of what is already there. When the user says how many they need, use set_cart_item_quantity.
+- Change the cart one item at a time and read structuredContent.result before reporting success. confirmedQuantity is what the cart now holds.
+- If a cart change returns mutation.outcome "unknown", the cart may have changed. Call get_cart and decide from its contents. Never repeat the change automatically.
+- Money is EUR in integer minorUnits (129 means €1.29). Missing prices, quantities or completeness stay unknown; do not guess them.
+- For planning a shopping list or basket, use the basket-planner prompt for the full workflow.`;
+
+export const basketPlannerPrompt: PromptHandler = {
+  name: 'basket-planner',
+  title: 'Plan a Continente basket',
+  description: 'Workflow for choosing products, checking sale quantities and changing the cart safely.',
+  arguments: { request: 'What to plan or buy, for example "weekly basket for two" or "add milk and eggs".' },
+  render: ({ request }) => ({
+    description: 'Continente basket planning workflow',
+    messages: [{ role: 'user', content: { type: 'text',
+      text: request?.trim() ? `${BASKET_PLANNER_GUIDE}\n\n## Request\n\n${request.trim()}` : BASKET_PLANNER_GUIDE } }],
+  }),
+};

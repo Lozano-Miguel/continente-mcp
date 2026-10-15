@@ -47,4 +47,4 @@ For "my usual items", `list_favorites` and `list_frequently_bought_products` can
 
 Finish with the chosen or changed items, confirmed quantities and units, and any unresolved choices or failures. Keep planned items separate from changes the server confirmed.
 
-For exact schemas and limits, see the [tool reference](../../docs/tools.md).
+For exact schemas and limits, see the [tool reference](https://github.com/andredelgado/continente-mcp/blob/main/docs/tools.md).
