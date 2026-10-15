@@ -50,6 +50,9 @@ printf 'CONTINENTE_EMAIL=you@example.com\nCONTINENTE_PASSWORD=your-password\n' >
 chmod 600 ~/.continentept-mcp/credentials.env
 ```
 
+Using 1Password? Skip the file and pass secret references through `op run` instead; see
+[Using 1Password](docs/configuration.md#using-1password).
+
 Optionally check that login works:
 
 ```sh

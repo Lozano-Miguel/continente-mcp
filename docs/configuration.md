@@ -40,6 +40,49 @@ chmod 600 ~/.continentept-mcp/credentials.env
 
 On Windows, limit the folder's permissions to your user account.
 
+## Using 1Password
+
+With the [1Password CLI](https://developer.1password.com/docs/cli/get-started/), the
+credentials never need to be written to a file. Put secret references in the MCP client
+configuration and start the server through `op run`, which swaps them for the real values:
+
+```json
+{
+  "mcpServers": {
+    "continente": {
+      "command": "op",
+      "args": ["run", "--no-masking", "--", "npx", "-y", "continentept-mcp"],
+      "env": {
+        "CONTINENTE_EMAIL": "op://Personal/Continente/username",
+        "CONTINENTE_PASSWORD": "op://Personal/Continente/password"
+      }
+    }
+  }
+}
+```
+
+For Claude Code:
+
+```sh
+claude mcp add continente \
+  -e CONTINENTE_EMAIL=op://Personal/Continente/username \
+  -e CONTINENTE_PASSWORD=op://Personal/Continente/password \
+  -- op run --no-masking -- npx -y continentept-mcp
+```
+
+- Replace `Personal/Continente` with your vault and item. In 1Password, right-click a field
+  and choose **Copy Secret Reference** to get the exact reference.
+- Turn on **Settings → Developer → Integrate with 1Password CLI** in the 1Password app so
+  `op` unlocks with Touch ID or your system password. You are asked when the client starts
+  the server.
+- Keep `--no-masking`. Without it, `op run` filters the server's output, which carries the MCP
+  protocol.
+- The same works for the login command:
+  `CONTINENTE_EMAIL=op://… CONTINENTE_PASSWORD=op://… op run -- npx -y continentept-mcp login`.
+
+Only the credentials come from 1Password. The website session the server saves after signing
+in still lives in the data directory, as described below.
+
 ## Sign-in and saved session
 
 Account tools reuse the saved session. When the website reports that it has expired, the
