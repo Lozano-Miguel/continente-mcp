@@ -71,7 +71,9 @@ Maintainers only.
 2. After it is merged, create a GitHub release with tag `vX.Y.Z` on that commit, using the
    changelog entries as its notes. Mark it as a prerelease for `-rc` and similar versions.
 3. Publishing the release runs the test matrix and publishes the same version to npm with
-   provenance (`latest`, or `next` for prereleases), and attaches `continente-mcp.mcpb` to
-   the release.
+   provenance (`latest`, or `next` for prereleases), attaches `continente-mcp.mcpb` to
+   the release, and updates the MCP Registry listing from `server.json` (stable releases
+   only). The workflow fills in the version and the extension checksum, so `server.json`
+   needs editing only when the listing itself changes.
 
 Never reuse or overwrite a published version.

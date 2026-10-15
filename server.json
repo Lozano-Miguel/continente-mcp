@@ -1,0 +1,53 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.andredelgado/continente-mcp",
+  "title": "Continente MCP",
+  "description": "Unofficial Continente.pt shopping: search products, read favorites and orders, manage the cart.",
+  "repository": {
+    "url": "https://github.com/andredelgado/continente-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/andredelgado/continente-mcp#readme",
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "continentept-mcp",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CONTINENTE_EMAIL",
+          "description": "Continente.pt account email. Needed for the cart, favorites and orders.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "CONTINENTE_PASSWORD",
+          "description": "Continente.pt account password.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "CONTINENTE_CREDENTIALS_FILE",
+          "description": "Path to a private credentials file instead of the two variables above.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        }
+      ]
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/andredelgado/continente-mcp/releases/download/v0.3.0/continente-mcp.mcpb",
+      "fileSha256": "32187b4dd737b729134043511321428460bf1f3f5014d9aa1838e0f3faa1d14e",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

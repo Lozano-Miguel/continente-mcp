@@ -44,7 +44,9 @@ it needs it (about 150 MB, once).
 3. Enter your Continente email and password when asked. Claude Desktop keeps the password
    in its secure settings storage.
 
-That's it. The extension updates when you install a newer `.mcpb`. To use 1Password instead
+That's it. The extension updates when you install a newer `.mcpb`. The server is also listed
+in the [MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.andredelgado/continente-mcp`, so clients that browse the registry can find it. To use 1Password instead
 of storing the password in Claude Desktop, use the manual setup below.
 
 ## Manual setup (any MCP client)

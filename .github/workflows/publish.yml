@@ -1,7 +1,8 @@
 name: Publish
 
 # Draft a GitHub release for tag vX.Y.Z and publish it; this workflow then releases the
-# same version to npm and attaches the Claude Desktop extension. Prereleases go to "next".
+# same version to npm, attaches the Claude Desktop extension and lists it in the MCP
+# Registry. Prereleases go to npm "next" and are not listed.
 on:
   release:
     types: [published]
@@ -78,3 +79,62 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
+
+  registry:
+    name: List in the MCP Registry
+    needs: [npm, extension]
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      PUBLISHER_VERSION: '1.8.1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The registry checks mcpName in the published package, which npm can take minutes to serve.
+      - name: Wait for the npm release
+        run: |
+          name=$(jq -r .name package.json); version=${TAG#v}; expected=$(jq -r .mcpName package.json)
+          for attempt in $(seq 1 40); do
+            if [ "$(npm view "$name@$version" mcpName 2>/dev/null)" = "$expected" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "::error::$name@$version with mcpName $expected did not appear on npm in time."
+          exit 1
+      - name: Fill in the version and the extension checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${TAG#v}
+          gh release download "$TAG" --pattern continente-mcp.mcpb --repo "$GITHUB_REPOSITORY"
+          sha=$(sha256sum continente-mcp.mcpb | cut -d' ' -f1)
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/continente-mcp.mcpb"
+          jq --arg v "$version" --arg sha "$sha" --arg url "$url" '.version = $v | .packages |= map(
+            if .registryType == "npm" then .version = $v
+            elif .registryType == "mcpb" then .identifier = $url | .fileSha256 = $sha
+            else . end)' server.json > server.tmp && mv server.tmp server.json
+      - name: Skip versions already listed
+        id: listed
+        run: |
+          name=$(jq -r .name server.json | sed 's#/#%2F#g')
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/$name/versions/${TAG#v}")
+          if [ "$status" = 200 ]; then echo "listed=true" >> "$GITHUB_OUTPUT"; echo "::notice::${TAG#v} is already in the MCP Registry."; fi
+      - name: Install mcp-publisher
+        if: steps.listed.outputs.listed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$PUBLISHER_VERSION" --repo modelcontextprotocol/registry \
+            --pattern mcp-publisher_linux_amd64.tar.gz --pattern "registry_${PUBLISHER_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "registry_${PUBLISHER_VERSION}_checksums.txt"
+          tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+      - name: Publish to the MCP Registry
+        if: steps.listed.outputs.listed != 'true'
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
