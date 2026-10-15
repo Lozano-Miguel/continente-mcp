@@ -20,7 +20,7 @@ npm test             # offline suite; never contacts the website
 npm run test:browser # real Chromium against local fixtures only
 npm run test:package # packs, installs and starts the published tarball
 npm audit --omit=dev
-npm run build:bundle # builds the Claude Desktop extension, build/continentept-mcp.mcpb
+npm run build:bundle # builds the Claude Desktop extension, build/continente-mcp.mcpb
 ```
 
 CI runs all of these on Linux (Node 22 and 24) and on macOS and Windows (Node 24).
@@ -71,7 +71,7 @@ Maintainers only.
 2. After it is merged, create a GitHub release with tag `vX.Y.Z` on that commit, using the
    changelog entries as its notes. Mark it as a prerelease for `-rc` and similar versions.
 3. Publishing the release runs the test matrix and publishes the same version to npm with
-   provenance (`latest`, or `next` for prereleases), and attaches `continentept-mcp.mcpb` to
+   provenance (`latest`, or `next` for prereleases), and attaches `continente-mcp.mcpb` to
    the release.
 
 Never reuse or overwrite a published version.

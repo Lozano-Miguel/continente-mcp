@@ -73,8 +73,8 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm run build:bundle
-      - name: Upload continentept-mcp.mcpb to the release
-        run: gh release upload "$TAG" build/continentept-mcp.mcpb --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Upload continente-mcp.mcpb to the release
+        run: gh release upload "$TAG" build/continente-mcp.mcpb --clobber --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}

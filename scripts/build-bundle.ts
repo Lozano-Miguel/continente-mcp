@@ -1,4 +1,4 @@
-// Build the Claude Desktop extension: build/continentept-mcp.mcpb.
+// Build the Claude Desktop extension: build/continente-mcp.mcpb.
 // Run `npm run build` first; this packs the compiled dist/ with production dependencies only.
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const stage = join(root, 'build', 'bundle');
-const output = join(root, 'build', 'continentept-mcp.mcpb');
+const output = join(root, 'build', 'continente-mcp.mcpb');
 const repository = 'https://github.com/andredelgado/continente-mcp';
 
 const pkg = z.object({ name: z.string(), version: z.string(), description: z.string(), keywords: z.array(z.string()), license: z.string() })

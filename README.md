@@ -38,7 +38,7 @@ it needs it (about 150 MB, once).
 
 ## Install in Claude Desktop (one click)
 
-1. Download [**continentept-mcp.mcpb**](https://github.com/andredelgado/continente-mcp/releases/latest/download/continentept-mcp.mcpb)
+1. Download [**continente-mcp.mcpb**](https://github.com/andredelgado/continente-mcp/releases/latest/download/continente-mcp.mcpb)
    from the latest release.
 2. Open it. Claude Desktop shows an install dialog; click **Install**.
 3. Enter your Continente email and password when asked. Claude Desktop keeps the password
