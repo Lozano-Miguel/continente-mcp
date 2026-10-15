@@ -9,7 +9,7 @@ import { present } from '../test-support/helpers.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const skill = readFileSync(new URL('../../skills/basket-planner/SKILL.md', import.meta.url), 'utf8');
+const skill = readFileSync(new URL('../../skills/basket-planner/SKILL.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 test('the basket-planner prompt and the bundled skill carry the same guide', () => {
   const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(skill);
