@@ -6,7 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0]
+## [0.2.0] - 2026-10-15
+
+### Added
+
+- Server instructions: assistants receive the cart rules (exact totals, one change at a time, check the cart after an uncertain change) as soon as they connect.
+- A `basket-planner` prompt with the full shopping workflow, with an optional request to plan for. No skill install is needed.
+- Documentation for supplying credentials from 1Password with `op run`.
+
+### Changed
+
+- The `basket-planner` skill links to the online tool reference, so it also works when uploaded on its own.
+
+## [0.1.0] - 2026-10-15
 
 ### Added
 
@@ -16,5 +28,6 @@ All notable changes to this project are documented here. The format follows
 - Automatic sign-in from environment variables or a private credentials file, and a `login` command.
 - The `basket-planner` skill for planning a shopping list and updating the basket.
 
-[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/andredelgado/continente-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/andredelgado/continente-mcp/releases/tag/v0.1.0
