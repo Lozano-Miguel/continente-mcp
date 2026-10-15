@@ -1,0 +1,222 @@
+[
+  {
+    "productId": "7069674",
+    "name": "Peito de Frango Continente",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 1.2,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 1.2,
+      "minOrderQuantity": 1.2,
+      "stepQuantity": 1.2,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 118.8
+    },
+    "expected": {
+      "minimumPieces": 1,
+      "maximumPieces": 99,
+      "kgPerPiece": 1.2
+    }
+  },
+  {
+    "productId": "7303767",
+    "name": "Maçã Pink Lady Continente",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.2,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.2,
+      "minOrderQuantity": 0.4,
+      "stepQuantity": 0.2,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 99
+    },
+    "expected": {
+      "minimumPieces": 2,
+      "maximumPieces": 495,
+      "kgPerPiece": 0.2
+    }
+  },
+  {
+    "productId": "2147762",
+    "name": "Pescada Pequena Fresca",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.3,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.3,
+      "minOrderQuantity": 0.6,
+      "stepQuantity": 0.3,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 45
+    },
+    "expected": {
+      "minimumPieces": 2,
+      "maximumPieces": 150,
+      "kgPerPiece": 0.3
+    }
+  },
+  {
+    "productId": "7023912",
+    "name": "Queijo Flamengo Fatiado no Balcão Contin",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.15,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.15,
+      "minOrderQuantity": 0.15,
+      "stepQuantity": 0.15,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 9.9
+    },
+    "expected": {
+      "minimumPieces": 1,
+      "maximumPieces": 66,
+      "kgPerPiece": 0.15
+    }
+  },
+  {
+    "productId": "2076838",
+    "name": "Tomate Chucha Continente",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.15,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.15,
+      "minOrderQuantity": 0.45,
+      "stepQuantity": 0.15,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 15
+    },
+    "expected": {
+      "minimumPieces": 3,
+      "maximumPieces": 100,
+      "kgPerPiece": 0.15
+    }
+  },
+  {
+    "productId": "4405983",
+    "name": "Posta de Salmão Fresca",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.3,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.3,
+      "minOrderQuantity": 0.6,
+      "stepQuantity": 0.3,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 24.9
+    },
+    "expected": {
+      "minimumPieces": 2,
+      "maximumPieces": 83,
+      "kgPerPiece": 0.3
+    }
+  },
+  {
+    "productId": "7221212",
+    "name": "Laranja Continente",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.3,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.3,
+      "minOrderQuantity": 0.9,
+      "stepQuantity": 0.3,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 30
+    },
+    "expected": {
+      "minimumPieces": 3,
+      "maximumPieces": 100,
+      "kgPerPiece": 0.3
+    }
+  },
+  {
+    "productId": "8365175",
+    "name": "Fiambre de Peito Peru Prisca",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.15,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.15,
+      "minOrderQuantity": 0.15,
+      "stepQuantity": 0.15,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 49.95
+    },
+    "expected": {
+      "minimumPieces": 1,
+      "maximumPieces": 333,
+      "kgPerPiece": 0.15
+    }
+  },
+  {
+    "productId": "4475280",
+    "name": "Batata Vermelha Continente",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.26,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.26,
+      "minOrderQuantity": 0.78,
+      "stepQuantity": 0.26,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 29.9
+    },
+    "expected": {
+      "minimumPieces": 3,
+      "maximumPieces": 115,
+      "kgPerPiece": 0.26
+    }
+  },
+  {
+    "productId": "7102076",
+    "name": "Pera Rocha DOP Oeste Continente",
+    "measureOptions": {
+      "hasConversionRate": true,
+      "hasAlternativeSaleUnit": true,
+      "primaryToSecondary": 0.2,
+      "secondaryToPrimary": 1,
+      "unitConversionRate": 0.2,
+      "minOrderQuantity": 0.8,
+      "stepQuantity": 0.2,
+      "primaryunit": "kg",
+      "secondaryunit": "un",
+      "selectedunit": "primary",
+      "maxNumberOfUnitsPerSale": 99
+    },
+    "expected": {
+      "minimumPieces": 4,
+      "maximumPieces": 495,
+      "kgPerPiece": 0.2
+    }
+  }
+]

@@ -107,7 +107,7 @@ test('unestablished bounds and contradictory conversions fail before producing s
   for (const input of [{}, { ...unitRules, stepQuantity: 0 }, { ...unitRules, stepQuantity: 0.0001 },
     { ...unitRules, minOrderQuantity: 6, maxNumberOfUnitsPerSale: 5 }, { ...unitRules, maxNumberOfUnitsPerSale: 'invalid' },
     { ...weightedRules, unitConversionRate: 0.3 }, { ...weightedRules, secondaryunit: 'g' },
-    { ...weightedRules, secondaryunit: 'l', stepQuantity: 0.2 }, { ...weightedRules, maxNumberOfUnitsPerSale: 5 }] as const) {
+    { ...weightedRules, secondaryunit: 'l', stepQuantity: 0.2 }, { ...weightedRules, maxNumberOfUnitsPerSale: 5.1 }] as const) {
     assert.equal(errorOf(parseSaleRules(input)).code, 'sale_rules_unknown');
   }
   const weighted = valueOf(parseSaleRules({ ...weightedRules, stepQuantity: 0.2 }));

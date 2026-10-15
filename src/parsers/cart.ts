@@ -88,6 +88,9 @@ const MEASURES: Partial<Record<string, { dimension: 'mass' | 'volume'; grams: nu
   l: { dimension: 'volume', grams: 1000 }, ml: { dimension: 'volume', grams: 1 },
 };
 const unknownRules = (message: string) => failure('sale_rules_unknown', message);
+/** Storefront amount converted to sale units, without binary noise such as 98.99999999999999. */
+const inSaleUnits = (value: number, factor: number) => Number((value / factor).toPrecision(12));
+const isWholeMultiple = (value: number, step: number) => { const ratio = value / step; return Math.abs(ratio - Math.round(ratio)) < 1e-6; };
 
 /** Interpret the storefront's `data-measure-options`. Anything ambiguous is rejected rather than guessed. */
 export function parseSaleRules(input: unknown): Result<SaleMetadata, ToolError> {
@@ -109,19 +112,24 @@ export function parseSaleRules(input: unknown): Result<SaleMetadata, ToolError> 
     if (sale && storefront && (sale.dimension !== storefront.dimension || Math.abs(factor - sale.grams / storefront.grams) > 1e-12)) {
       return unknownRules('The unit conversion contradicts the declared units');
     }
-    // The maximum's unit is not stated for alternative-unit products, so it cannot be applied safely.
-    if (options.maxNumberOfUnitsPerSale != null) return unknownRules('The maximum quantity has no established unit for this product');
   } else if (options.primaryunit !== 'un' || (options.selectedunit != null && options.selectedunit !== 'primary')) {
     return unknownRules('Only unit sales and declared alternative units are supported');
   }
 
   const step = options.stepQuantity ?? (saleUnit === 'un' ? factor : null);
+  const max = options.maxNumberOfUnitsPerSale;
+  // Minimum, step and maximum are all in the storefront unit (kg for weighted products): the site's
+  // own quantity control compares one quantity against all three and snaps the maximum to the step.
+  // A maximum that is not a whole number of steps is not a shape we have seen, so refuse it.
+  if (alternativeUnit && max != null && step && !isWholeMultiple(max, step)) {
+    return unknownRules('The maximum quantity is not a whole number of steps');
+  }
   if (!step || !milliquantity(step).ok) return unknownRules('A positive step with at most three decimals is required');
   const unit = saleUnit as QuantityUnit;
-  const minimum = options.minOrderQuantity ? { value: options.minOrderQuantity / factor, unit } : null;
-  const maximum = options.maxNumberOfUnitsPerSale != null ? { value: options.maxNumberOfUnitsPerSale, unit } : null;
+  const minimum = options.minOrderQuantity ? { value: inSaleUnits(options.minOrderQuantity, factor), unit } : null;
+  const maximum = max != null ? { value: inSaleUnits(max, factor), unit } : null;
   const rules = ProductSaleRulesSchema.safeParse({ saleUnit, storefrontUnit: alternativeUnit ? options.primaryunit : 'un',
-    storefrontUnitsPerSaleUnit: factor, minimum, maximum, step: { value: step / factor, unit } });
+    storefrontUnitsPerSaleUnit: factor, minimum, maximum, step: { value: inSaleUnits(step, factor), unit } });
   if (!rules.success) return unknownRules('Sale rules use an unsupported unit or contradictory bounds');
   return success({ rules: rules.data, alternativeUnit, storefrontStep: String(step), updateDimension: options.secondaryunit || options.primaryunit });
 }

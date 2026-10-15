@@ -102,7 +102,9 @@ Returns `productId`, `productSlug`, `name`, `url`, `price`, `secondaryPrice`, `r
   "minimum": { "value": 1, "unit": "un" }, "maximum": { "value": 10, "unit": "un" }, "step": { "value": 1, "unit": "un" } } }
 ```
 
-Cart quantities are always in `saleUnit`. If the website's rules cannot be interpreted
+Cart quantities are always in `saleUnit`. Products priced per kilogram but sold by the piece
+(fruit, meat, fish) have `saleUnit: "un"` and `storefrontUnit: "kg"`: their minimum, maximum and
+step are whole pieces, and `storefrontUnitsPerSaleUnit` is the approximate weight of one piece. If the website's rules cannot be interpreted
 safely, `saleRules` is `{ "status": "unavailable", "error": ... }` and the result is
 `partial`. Availability reflects the product page, not delivery-slot stock.
 

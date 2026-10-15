@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 - `search_products` and `get_product` return `recommendedPrice`, the recommended retail price (PVPR) the website shows beside the price on many promotions, so assistants can compare it with the selling price.
 
+### Fixed
+
+- Products sold by the piece but priced per kilogram (fruit, vegetables, meat, fish, counter cheese and ham) had no sale rules, so they could not be added to the cart. Their maximum is now read in kilograms, like the minimum and step, and converted to whole pieces.
+
 ## [0.5.0] - 2026-10-15
 
 ### Fixed
