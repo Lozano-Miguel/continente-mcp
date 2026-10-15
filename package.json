@@ -62,7 +62,8 @@
     "test": "node build/tools/run-tests.js",
     "test:browser": "npm run build && tsc -p tsconfig.tests.json && node build/tools/run-tests.js --browser",
     "test:package": "npm run build:tools && node build/tools/package-smoke.js",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "build:bundle": "npm run build && node build/tools/build-bundle.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -71,6 +72,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@types/node": "^22.18.0",
     "typescript": "^7.0.2"
   }

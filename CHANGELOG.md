@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- One-click Claude Desktop extension (`continentept-mcp.mcpb`) attached to every release. It asks for your email and password at install time.
+- Chromium downloads automatically the first time it is needed; `install-browser` is now optional. While it downloads, tools return a retryable `browser_unavailable` error explaining the wait.
+
 ## [0.2.0] - 2026-10-15
 
 ### Added

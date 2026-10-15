@@ -1,7 +1,7 @@
 name: Publish
 
 # Draft a GitHub release for tag vX.Y.Z and publish it; this workflow then releases the
-# same version to npm. Prereleases go to the "next" dist-tag.
+# same version to npm and attaches the Claude Desktop extension. Prereleases go to "next".
 on:
   release:
     types: [published]
@@ -55,3 +55,26 @@ jobs:
       - name: Publish to npm
         if: steps.registry.outputs.published != 'true'
         run: npm publish --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
+
+  extension:
+    name: Attach Claude Desktop extension
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run build:bundle
+      - name: Upload continentept-mcp.mcpb to the release
+        run: gh release upload "$TAG" build/continentept-mcp.mcpb --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}

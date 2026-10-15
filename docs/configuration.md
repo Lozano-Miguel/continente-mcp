@@ -1,7 +1,9 @@
 # Configuration
 
 Settings come from environment variables and an optional private credentials file. They are
-read when the server starts.
+read when the server starts. The Claude Desktop extension asks for your email and password
+when you install it and passes them to the server for you; the rest of this page is for
+manual setups.
 
 ## Variables
 

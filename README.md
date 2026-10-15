@@ -29,20 +29,27 @@ on the website.
 
 ## Requirements
 
-- Node.js 22 or newer
 - A Continente.pt account for account features (search and product details work without one)
+- Claude Desktop on macOS or Windows for the one-click install, or Node.js 22 or newer for
+  any other MCP client
 
-## Quick start
+The server drives the website with Chromium, which it downloads automatically the first time
+it needs it (about 150 MB, once).
 
-**1. Install the browser** the server uses to talk to the website (one-time download):
+## Install in Claude Desktop (one click)
 
-```sh
-npx -y continentept-mcp install-browser
-```
+1. Download [**continentept-mcp.mcpb**](https://github.com/andredelgado/continente-mcp/releases/latest/download/continentept-mcp.mcpb)
+   from the latest release.
+2. Open it. Claude Desktop shows an install dialog; click **Install**.
+3. Enter your Continente email and password when asked. Claude Desktop keeps the password
+   in its secure settings storage.
 
-On Linux, append `--with-deps` to also install the required system libraries.
+That's it. The extension updates when you install a newer `.mcpb`. To use 1Password instead
+of storing the password in Claude Desktop, use the manual setup below.
 
-**2. Save your credentials** in `~/.continentept-mcp/credentials.env` (see
+## Manual setup (any MCP client)
+
+**1. Save your credentials** in `~/.continentept-mcp/credentials.env` (see
 [configuration](docs/configuration.md) for other options):
 
 ```sh
@@ -60,7 +67,7 @@ Optionally check that login works:
 npx -y continentept-mcp login
 ```
 
-**3. Add the server to your MCP client.**
+**2. Add the server to your MCP client.**
 
 Claude Code:
 
@@ -83,6 +90,10 @@ Claude Desktop, Cursor and other clients (`claude_desktop_config.json`, `mcp.jso
 
 To keep the credentials file elsewhere, add
 `"env": { "CONTINENTE_CREDENTIALS_FILE": "/absolute/path/to/credentials.env" }`.
+
+Chromium downloads itself on first use. To fetch it ahead of time, run
+`npx -y continentept-mcp install-browser` (on Linux, add `--with-deps` for the system
+libraries it needs).
 
 Then ask your assistant something like *"Add semi-skimmed milk and a dozen eggs to my
 Continente cart"* or *"What do I usually buy? Build me a list for this week."*
@@ -129,7 +140,7 @@ then apply it automatically whenever you ask about groceries.
 ```text
 continentept-mcp                    Start the MCP server on stdio
 continentept-mcp login              Sign in and save the session (--show-browser to watch)
-continentept-mcp install-browser    Download Chromium (extra arguments go to Playwright)
+continentept-mcp install-browser    Download Chromium now instead of on first use (extra arguments go to Playwright)
 continentept-mcp --version
 ```
 
