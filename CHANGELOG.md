@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-15
+
 ### Added
 
 - Update notice: once a day the server checks npm for a newer release and, if there is one, tells the assistant and reports it in `get_session_status`. Offline-safe; turn it off with `CONTINENTE_UPDATE_CHECK=0`.
@@ -53,7 +55,8 @@ All notable changes to this project are documented here. The format follows
 - Automatic sign-in from environment variables or a private credentials file, and a `login` command.
 - The `basket-planner` skill for planning a shopping list and updating the basket.
 
-[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/andredelgado/continente-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/andredelgado/continente-mcp/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/andredelgado/continente-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/andredelgado/continente-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/andredelgado/continente-mcp/compare/v0.1.0...v0.2.0
