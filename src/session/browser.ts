@@ -4,6 +4,7 @@ import type { CookieStore } from '../stores/files.js';
 import type { Clock, Logger, SessionService } from '../ports.js';
 import type { BrowserStatus } from '../domain/index.js';
 import { createSerialTaskQueue } from './queue.js';
+import { safeLoginMessage } from './login-errors.js';
 import { checkRequest, currentRequest, inRequest, RequestScope, acquireResource } from './request.js';
 
 export type BrowserLauncher = (options: { headless: boolean }) => Promise<Browser>;
@@ -95,7 +96,7 @@ export class BrowserSession implements StorefrontSession {
         const authenticated = await this.login();
         if (authenticated) { this.recordAuthentication(true); this.authenticationRevision = await this.cookies.revision(); }
         return authenticated;
-      } catch (error) { this.logger(`Login failed: ${error instanceof Error ? error.message : 'unknown error'}`); return false; }
+      } catch (error) { this.logger(safeLoginMessage(error)); return false; }
     });
   }
 

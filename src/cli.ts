@@ -5,6 +5,7 @@ import { createShoppingApplication } from './runtime.js';
 import { runAutoLogin } from './auto-login.js';
 import { isMainModule } from './main-module.js';
 import { runChromiumInstall } from './session/chromium.js';
+import { safeLoginMessage } from './session/login-errors.js';
 import { checkForUpdate } from './services/updates.js';
 import { loadSettings } from './config.js';
 import type { ContinenteMcpServer } from './mcp/server.js';
@@ -64,7 +65,7 @@ export async function main(args: string[]): Promise<number> {
       return 0;
     case 'login':
       try { return (await runAutoLogin({ showBrowser: rest.includes('--show-browser') })) ? 0 : 1; }
-      catch (error) { console.error(`Login failed: ${error instanceof Error ? error.message : 'unknown error'}`); return 1; }
+      catch (error) { console.error(safeLoginMessage(error)); return 1; }
     case 'install-browser':
       return runChromiumInstall(rest);
     case '-v':

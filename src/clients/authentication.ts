@@ -1,4 +1,4 @@
-import type { BrowserContext, Frame, Page } from 'playwright';
+import type { Browser, BrowserContext, Frame, Page } from 'playwright';
 import type { Logger } from '../ports.js';
 import type { CookieStore } from '../stores/files.js';
 import { SessionCookiesSchema } from '../stores/files.js';
@@ -9,6 +9,7 @@ import { STOREFRONT_ORIGIN } from '../parsers/catalog.js';
 import { isLoginUrl, responseStatus } from './policy.js';
 import { CART_SUMMARY_URL } from './storefront.js';
 import { requestIO, acquireResource, checkRequest } from '../session/request.js';
+import { LoginFailed, loginFailure } from '../session/login-errors.js';
 
 const LOGIN_ORIGIN = 'https://login.continente.pt';
 const EMAIL_INPUT = '#userNameCC';
@@ -53,29 +54,39 @@ export class AuthenticationClient {
       this.logger('Login skipped: CONTINENTE_EMAIL and CONTINENTE_PASSWORD are required.');
       return false;
     }
-    const browser = await acquireResource(() => this.launch({ headless: !this.options.showBrowser }), browser => browser.close());
+    let step = 'starting the browser';
+    let browser: Browser | undefined;
     let closing: Promise<void> | undefined;
-    const close = () => closing ??= browser.close();
+    const close = () => closing ??= browser?.close() ?? Promise.resolve();
     try {
+      const launched = browser = await acquireResource(() => this.launch({ headless: !this.options.showBrowser }), opened => opened.close());
       return await requestIO(async () => {
-        const context = await acquireResource(() => browser.newContext({ userAgent: browserUserAgent(browser.version()), locale: 'pt-PT' }), context => context.close());
+        const context = await acquireResource(() => launched.newContext({ userAgent: browserUserAgent(launched.version()), locale: 'pt-PT' }), context => context.close());
         const page = await acquireResource(() => context.newPage(), page => page.close());
         this.logger('Signing in.');
+        step = 'opening the login page';
         await page.goto(`${STOREFRONT_ORIGIN}/login/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.getByRole('button', { name: CONSENT_BUTTON }).click({ timeout: 5000 }).catch(() => {});
         const frame = await this.loginFrame(page);
+        step = 'entering the email';
         await this.submit(frame, EMAIL_INPUT, email);
         const leftLogin = page.waitForURL(url => url.origin === STOREFRONT_ORIGIN && !isLoginUrl(url.href), { timeout: 20000 }).catch(() => {});
+        step = 'entering the password';
         await this.submit(frame, PASSWORD_INPUT, password);
         await leftLogin;
         checkRequest();
-        if (!(await this.isSignedIn(context))) throw new Error('The website did not accept the login');
+        step = 'checking the new session';
+        if (!(await this.isSignedIn(context))) throw new LoginFailed('Sign-in failed: the website did not accept the login.');
+        step = 'saving the session';
         const cookies = SessionCookiesSchema.safeParse(await context.cookies());
-        if (!cookies.success) throw new Error('The website returned an unexpected session');
+        if (!cookies.success) throw new LoginFailed('Sign-in failed: the website returned an unexpected session.');
         await this.cookies.save(cookies.data);
         this.logger('Signed in; session saved.');
         return true;
       }, close);
+    } catch (error) {
+      // Playwright messages from these steps can contain the typed password or Cookie headers.
+      throw loginFailure(step, error);
     } finally { await close(); }
   }
 }

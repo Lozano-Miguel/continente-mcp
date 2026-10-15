@@ -5,6 +5,7 @@ import { double } from '../test-support/assertions.js';
 import { chromium } from 'playwright';
 import { CartClient, StorefrontClient } from '../src/clients/storefront.js';
 import { parseProductForm } from '../src/parsers/cart.js';
+import { loginFailure, safeLoginMessage } from '../src/session/login-errors.js';
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -32,5 +33,27 @@ test('local Chromium extracts current form properties before pure validation', {
     const form = parseProductForm(response.value, ProductIdSchema.parse('00123'));
     assert.equal(form.ok, true);
     assert.equal(form.value.sale.rules.saleUnit, 'un');
+  } finally { await browser.close(); }
+});
+
+test('real Playwright failures never put a typed password or cookie into sign-in logs', {
+  skip: process.env.CONTINENTE_LOCAL_BROWSER_TEST !== '1' && 'Opt in with CONTINENTE_LOCAL_BROWSER_TEST=1; uses only local pages',
+}, async () => {
+  const password = 'FAKE-PASSWORD-7c41'; const cookie = 'FAKE-COOKIE-9e2a';
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<form><input id="password_input" type="password" disabled></form>');
+    const fill = await page.locator('#password_input').fill(password, { timeout: 500 }).catch((error: unknown) => error);
+    assert.ok(fill instanceof Error && fill.message.includes(password), 'Playwright is expected to embed the typed value');
+    const fillLog = safeLoginMessage(loginFailure('entering the password', fill));
+    assert.equal(fillLog, 'Sign-in failed while entering the password (timed out).');
+    await page.context().addCookies([{ name: 'session', value: cookie, domain: '127.0.0.1', path: '/' }]);
+    const request = await page.context().request.get('http://127.0.0.1:9/', { timeout: 500 }).catch((error: unknown) => error);
+    assert.ok(request instanceof Error && request.message.includes(cookie), 'Playwright is expected to embed the Cookie header');
+    const requestLog = safeLoginMessage(loginFailure('checking the new session', request));
+    for (const text of [fillLog, requestLog, safeLoginMessage(fill), safeLoginMessage(request)]) {
+      assert.ok(!text.includes(password) && !text.includes(cookie), text);
+    }
   } finally { await browser.close(); }
 });

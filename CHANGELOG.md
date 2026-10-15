@@ -10,6 +10,14 @@ All notable changes to this project are documented here. The format follows
 
 - Update notice: once a day the server checks npm for a newer release and, if there is one, tells the assistant and reports it in `get_session_status`. Offline-safe; turn it off with `CONTINENTE_UPDATE_CHECK=0`.
 
+### Fixed
+
+- Documentation: how the home folder is chosen on Windows, what "readable only by your user" covers, when the favorites snapshot is refetched, and what deleting the data directory removes.
+
+### Security
+
+- A failed sign-in could write the account password or session cookies to the server log, because browser automation errors include what was typed and the request headers. Sign-in errors are now reported as fixed messages naming only the failed step.
+
 ## [0.3.1] - 2026-10-15
 
 ### Added

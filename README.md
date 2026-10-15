@@ -22,7 +22,8 @@ on the website.
   cannot be confirmed, the result says so and tells the assistant to check the cart instead
   of retrying.
 - **Your account**: favorites, order history and a ranking of the products you buy most.
-- **Runs locally** over stdio. Credentials and cookies stay on your machine.
+- **Runs locally** over stdio. Your credentials and session are stored on your computer and
+  sent only to Continente.pt.
 - **Built-in guidance.** The server tells the assistant the cart rules as soon as it
   connects, and offers a `basket-planner` prompt with the full shopping workflow. Nothing
   extra to install; the same guide also ships as a [skill](skills/basket-planner/SKILL.md).

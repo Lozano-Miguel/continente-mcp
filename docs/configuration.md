@@ -16,7 +16,8 @@ manual setups.
 | `CONTINENTE_BROWSER_IDLE_SECONDS` | `300` | Close the browser after this many idle seconds. `0` keeps it open until the server stops. |
 | `CONTINENTE_UPDATE_CHECK` | `1` | Set to `0` to stop the daily check for a newer release on npm. |
 
-On Windows, `~` is `%USERPROFILE%`.
+`~` is your home directory: `HOME`, or `%USERPROFILE%` when `HOME` is not set (the usual case on
+Windows).
 
 ## Credentials file
 
@@ -111,9 +112,20 @@ complete it in that window; the session is saved once the account is signed in.
 | `favorites.json.bak` | Previous valid favorites snapshot. |
 | `update-check.json` | The latest version seen on npm and when it was checked. |
 
-Files are written atomically and readable only by your user. A new session or a different
-account makes the favorites snapshot stale until it is refreshed. Delete the directory to
-remove everything the server has stored.
+Files are written atomically. On macOS and Linux they are created readable only by your user;
+on Windows they inherit the folder's permissions, so restrict the folder as described above.
+The server does not change the permissions of a folder that already exists.
+
+If you sign in with a different account or the saved session is replaced, the old favorites
+snapshot is no longer used and the next request fetches a fresh one. A snapshot of the same
+account that is more than 24 hours old is still used, marked as stale.
+
+Deleting the data directory removes everything listed above. A credentials file kept
+elsewhere (`CONTINENTE_CREDENTIALS_FILE`) and the downloaded Chromium, which lives in
+Playwright's own cache folder, are separate.
+
+Sign-in errors are logged as short, fixed messages that name the step that failed. They never
+include your password, email or session cookies.
 
 ## Update check
 
