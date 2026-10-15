@@ -6,6 +6,7 @@ import { FileCookieStore, FileFavoritesStore } from './stores/files.js';
 import type { CookieStore } from './stores/files.js';
 import { BrowserSession } from './session/browser.js';
 import type { BrowserLauncher, StorefrontSession } from './session/browser.js';
+import { ChromiumInstaller, runChromiumInstall } from './session/chromium.js';
 import { AuthenticationClient } from './clients/authentication.js';
 import { StorefrontClient, CatalogClient, FavoritesClient, CartClient, OrdersClient } from './clients/storefront.js';
 import { CatalogService, FavoritesService } from './services/catalog.js';
@@ -16,7 +17,13 @@ import type { ShoppingServices } from './mcp/shopping.js';
 import { SERVER_INSTRUCTIONS, basketPlannerPrompt } from './mcp/guide.js';
 
 export const systemClock: Clock = { now: () => new Date() };
-export const launchBrowser: BrowserLauncher = async options => (await import('playwright')).chromium.launch(options);
+const chromiumInstaller = new ChromiumInstaller(async () => {
+  // Skip per-percent progress lines; keep the start, finish and any errors.
+  const code = await runChromiumInstall([], line => { if (!line.includes('%')) console.error(`[chromium] ${line}`); });
+  if (code !== 0) throw new Error(`Chromium download exited with code ${code}`);
+}, message => console.error(message));
+/** Launch Playwright's Chromium, downloading it first if this machine does not have it yet. */
+export const launchBrowser: BrowserLauncher = chromiumInstaller.launcher(async options => (await import('playwright')).chromium.launch(options));
 export interface RuntimeOptions {
   env?: Environment; clock?: Clock; logger?: Logger; launch?: BrowserLauncher;
   cookies?: CookieStore; favoritesStore?: FavoritesStore; session?: StorefrontSession;

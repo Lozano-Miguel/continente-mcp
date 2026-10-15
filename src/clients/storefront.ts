@@ -1,4 +1,5 @@
 import { requestIO, requestTimeout, checkRequest, RequestStopped, reportProgress } from '../session/request.js';
+import { BrowserUnavailable } from '../session/chromium.js';
 import type { CatalogGateway, FavoritesGateway, CartGateway, OrdersGateway, PreparedCartMutation, RetrievedPages } from '../ports.js';
 import type { Result, ToolError } from '../domain/index.js';
 import { failure, success } from '../domain/index.js';
@@ -10,6 +11,11 @@ import { field } from '../parsers/records.js';
 
 export const CART_SUMMARY_URL = `${STOREFRONT_ORIGIN}/on/demandware.store/Sites-continente-Site/default/Cart-MiniCartShow`;
 const ORDER_DETAIL_PATHS = ['/conta/detalhe-encomenda/', '/detalhe-encomenda'];
+/** Map an error from starting or using the browser; cancellation keeps propagating. */
+function browserFailure(error: unknown): { ok: false; error: ToolError } {
+  if (error instanceof RequestStopped) throw error;
+  return error instanceof BrowserUnavailable ? { ok: false, error: error.toolError } : failure('upstream_unavailable');
+}
 const productPath = (reference: string) => `/produto/${reference.endsWith('.html') ? reference : `${reference}.html`}`;
 
 export class StorefrontClient {
@@ -27,7 +33,7 @@ export class StorefrontClient {
       if (!status.ok && status.error.code === 'not_authenticated') this.session.recordAuthentication?.(false);
       if (!status.ok) return status;
       return success(lease);
-    } catch (error) { if (error instanceof RequestStopped) throw error; return failure('upstream_unavailable'); }
+    } catch (error) { return browserFailure(error); }
   }
   async html(path: string, marker = 'main, [role="main"], .product-line, a[href*="/produto/"]'): Promise<Result<string, ToolError>> {
     const response = await this.navigateToStorefrontPage(path);
@@ -78,7 +84,7 @@ async function readContinuation(site: StorefrontClient, url: string): Promise<Re
     const response = await site.io(lease, () => lease.context.request.get(url, { timeout: requestTimeout(10000), maxRedirects: 0 }));
     const status = responseStatus(response, response.url?.() ?? url);
     return status.ok ? success(await site.io(lease, () => response.text())) : status;
-  } catch (error) { return failure(error instanceof RequestStopped ? error.code : 'upstream_unavailable'); }
+  } catch (error) { return error instanceof RequestStopped ? failure(error.code) : browserFailure(error); }
 }
 export class FavoritesClient implements FavoritesGateway {
   constructor(private readonly site: StorefrontClient) {}
@@ -118,7 +124,7 @@ export class CartClient implements CartGateway {
       const authenticated = field(data, 'resources', 'customerAuthenticated');
       if (typeof authenticated === 'boolean') this.site.session.recordAuthentication?.(authenticated);
       return authenticatedPayload(data);
-    } catch (error) { if (error instanceof RequestStopped) throw error; return failure('upstream_unavailable'); }
+    } catch (error) { return browserFailure(error); }
   }
   async fetchProductForm(reference: string): Promise<Result<unknown, ToolError>> {
     const response = await this.site.navigateToStorefrontPage(productPath(reference));
@@ -162,7 +168,7 @@ export class CartClient implements CartGateway {
       if (!payload.ok && payload.error.code === 'not_authenticated') this.site.session.recordAuthentication?.(false);
       return payload;
       } catch (error) { if (error instanceof RequestStopped) throw error; return failure('cart_change_unconfirmed'); } });
-    } catch (error) { if (error instanceof RequestStopped) throw error; return failure('upstream_unavailable'); }
+    } catch (error) { return browserFailure(error); }
   }
 }
 export class OrdersClient implements OrdersGateway {
@@ -176,7 +182,7 @@ export class OrdersClient implements OrdersGateway {
     try {
       await this.site.io(response.value, () => page.waitForSelector('main, [role="main"], a[href*="detalhe-encomenda"]', { state: 'attached', timeout: requestTimeout(10000) }));
       return success(await this.site.io(response.value, () => page.content()));
-    } catch (error) { if (error instanceof RequestStopped) throw error; return failure('upstream_unavailable'); }
+    } catch (error) { return browserFailure(error); }
   }
   async fetchOrderLines(url: string): Promise<Result<string, ToolError>> {
     const href = storefrontUrl(url);

@@ -5,7 +5,8 @@ without contacting the website.
 
 | Symptom | What to do |
 | --- | --- |
-| `Executable doesn't exist` or the browser fails to start | Run `npx -y continentept-mcp install-browser`. On Linux, add `--with-deps` to install system libraries. |
+| `browser_unavailable`: Chromium is being downloaded | The first use downloads Chromium (about 150 MB). Wait a minute and try again. |
+| `browser_unavailable`: Chromium could not be downloaded | Check the internet connection, then run `npx -y continentept-mcp install-browser` to see the download output. On Linux, add `--with-deps` to install system libraries. |
 | `not_authenticated` | Check that `get_session_status` reports credentials as configured, then run `continentept-mcp login` to test them. See [configuration](configuration.md). |
 | Sign-in keeps failing | Run `continentept-mcp login --show-browser` to watch the browser and complete any extra verification the website asks for. |
 | Status shows `authentication: unknown` | Nothing has been observed since the server started or since the saved session changed. Any account tool will establish it. |

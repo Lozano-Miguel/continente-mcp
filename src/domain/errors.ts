@@ -5,7 +5,7 @@ export const ToolErrorCodeSchema = z.enum([
   'not_found', 'sale_rules_unknown', 'quantity_below_minimum',
   'cart_change_rejected', 'cart_change_unconfirmed', 'cache_unavailable',
   'order_details_unavailable',
-  'cancelled', 'deadline_exceeded', 'server_closed', 'queue_full',
+  'cancelled', 'deadline_exceeded', 'server_closed', 'queue_full', 'browser_unavailable',
 ]);
 
 export const ToolErrorSchema = z.strictObject({

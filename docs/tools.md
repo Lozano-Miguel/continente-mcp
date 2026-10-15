@@ -195,6 +195,7 @@ credentials, cookies or file paths.
 | `cart_change_rejected` | The website rejected the cart change. |
 | `cart_change_unconfirmed` | The cart change could not be confirmed. |
 | `cache_unavailable` | The local favorites snapshot could not be read or written. |
+| `browser_unavailable` | Chromium is still downloading for first use, or the download failed. Retryable. |
 | `cancelled`, `deadline_exceeded`, `server_closed`, `queue_full` | The request stopped before completing. |
 | `internal_error`, `invalid_result` | Unexpected server failure. Details are not exposed. |
 

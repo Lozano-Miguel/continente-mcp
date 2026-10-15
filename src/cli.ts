@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createShoppingApplication } from './runtime.js';
 import { runAutoLogin } from './auto-login.js';
 import { isMainModule } from './main-module.js';
+import { runChromiumInstall } from './session/chromium.js';
 import type { ContinenteMcpServer } from './mcp/server.js';
 
 const USAGE = `Usage: continentept-mcp [command]
@@ -52,12 +50,6 @@ export async function connectStdioApplication(application: ContinenteMcpServer):
   try { await application.connect(new StdioServerTransport()); } catch (error) { detach(); throw error; }
 }
 
-function installBrowser(extra: string[]): number {
-  const playwright = dirname(createRequire(import.meta.url).resolve('playwright/package.json'));
-  const result = spawnSync(process.execPath, [join(playwright, 'cli.js'), 'install', 'chromium', ...extra], { stdio: 'inherit' });
-  return result.status ?? 1;
-}
-
 export async function main(args: string[]): Promise<number> {
   const [command, ...rest] = args;
   switch (command) {
@@ -69,7 +61,7 @@ export async function main(args: string[]): Promise<number> {
       try { return (await runAutoLogin({ showBrowser: rest.includes('--show-browser') })) ? 0 : 1; }
       catch (error) { console.error(`Login failed: ${error instanceof Error ? error.message : 'unknown error'}`); return 1; }
     case 'install-browser':
-      return installBrowser(rest);
+      return runChromiumInstall(rest);
     case '-v':
     case '--version':
       console.log(packageVersion());
